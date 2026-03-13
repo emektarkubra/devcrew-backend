@@ -12,10 +12,10 @@ SessionLocal = sessionmaker(
     autoflush=False, # otomatik db ye yazma yapmıyor
     bind=engine # engine bağlan 
     )
- 
+
 class Base(DeclarativeBase):
     pass
- 
+
 def get_db():
     db = SessionLocal()
     try:
