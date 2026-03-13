@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5433:5432"  # Host port 5433, container port 5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  web:
+    build: .
+    container_name: fastapi_app
+    command: uvicorn app.main:app --host 0.0.0.0 --port ${FASTAPI_PORT} --reload
+    ports:
+      - "${FASTAPI_PORT}:${FASTAPI_PORT}"  # env port ile eşleştirme
+    depends_on:
+      - db
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+
+volumes:
+  pgdata:
