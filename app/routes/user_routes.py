@@ -4,12 +4,8 @@ from sqlalchemy.orm import Session
 from jose import jwt, JWTError
 from app.core.database import get_db
 from app.core.config import settings
-from app.services.user_service import (
-    exchange_code_for_token,
-    get_github_user,
-    get_or_create_user,
-    fetch_user_repos,
-)
+from app.models.user import User 
+from app.services.user_service import ( exchange_code_for_token, get_github_user, get_or_create_user, fetch_user_repos)
 
 router = APIRouter()
 
@@ -22,6 +18,7 @@ GITHUB_AUTH_URL = (
 def create_jwt(user_id: int) -> str:
     return jwt.encode({"sub": str(user_id)}, settings.SECRET_KEY, algorithm="HS256")
 
+
 def get_current_user_id(token: str) -> int:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
@@ -30,12 +27,12 @@ def get_current_user_id(token: str) -> int:
         raise HTTPException(status_code=401, detail="Geçersiz token")
 
 
+
 @router.get("/auth/github/login")
-def github_login(redirect: bool = False):
+def github_login():
     """Kullanıcıyı GitHub login sayfasına yönlendir"""
-    if redirect:
-        return RedirectResponse(GITHUB_AUTH_URL)
-    return {"login_url": GITHUB_AUTH_URL}  # Swagger için URL döner
+    return RedirectResponse(GITHUB_AUTH_URL)  # direkt redirect, JSON yok
+
 
 
 @router.get("/auth/github/callback")
@@ -46,8 +43,8 @@ async def github_callback(code: str, db: Session = Depends(get_db)):
     user         = await get_or_create_user(db, github_user, access_token)
     jwt_token    = create_jwt(user.id)
 
-    # React'e token'ı URL ile ilet
     return RedirectResponse(f"http://localhost:5173?token={jwt_token}")
+
 
 
 @router.get("/repos")

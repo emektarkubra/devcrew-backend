@@ -9,4 +9,4 @@ class User(Base):
     username        = Column(String, unique=True)
     email           = Column(String, nullable=True)
     avatar_url      = Column(String, nullable=True)
-    access_token    = Column(String)  # GitHub OAuth token
+    access_token    = Column(String) 
