@@ -5,5 +5,8 @@ class Settings(BaseSettings): # env variables okuyup Python objesine Ã§eviren sÄ
  
     DATABASE_URL: str
     SECRET_KEY: str
+    GITHUB_CLIENT_ID: str
+    GITHUB_CLIENT_SECRET: str
+    FASTAPI_PORT: int = 8000
  
 settings = Settings()
