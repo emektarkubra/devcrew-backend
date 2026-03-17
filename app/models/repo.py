@@ -16,11 +16,17 @@ class Repo(Base):
     language        = Column(String, nullable=True)
     is_private      = Column(Boolean, default=False)
     stars           = Column(Integer, default=0)
+    
+    # Yeni alanlar
+    default_branch  = Column(String, nullable=True)
+    watchers_count  = Column(Integer, default=0)
+    size            = Column(Integer, default=0)
+    updated_at      = Column(DateTime, nullable=True)
+    forks_count     = Column(Integer, default=0)
+    html_url        = Column(String, nullable=True)
+
     last_indexed_at = Column(DateTime, nullable=True)
     created_at      = Column(DateTime, default=datetime.utcnow)
 
-    # Foreign key
     owner_id        = Column(Integer, ForeignKey("users.id"), nullable=False)
-
-    # Relationship
     owner           = relationship("User", back_populates="repos")
