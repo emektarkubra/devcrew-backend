@@ -25,10 +25,10 @@ cd <REPO_ADI>
 
 ```env
 # PostgreSQL ayarları
-POSTGRES_USER=postgres          # DB kullanıcı adı
-POSTGRES_PASSWORD=1234Asd.      # DB şifresi
-POSTGRES_DB=postgres            # DB adı
-POSTGRES_PORT=5433              # Host makinede DB portu
+POSTGRES_USER=DB-USERNAME      
+POSTGRES_PASSWORD=DB-PASSWORD    
+POSTGRES_DB=DB-NAME           
+POSTGRES_PORT=DB-PORT             
 
 # FastAPI ayarları
 FASTAPI_PORT=8000               # Host makinede FastAPI portu
