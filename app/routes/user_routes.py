@@ -5,6 +5,7 @@ from jose import jwt, JWTError
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.user import User 
+from app.services.repo_service import sync_user_repos
 from app.services.user_service import (
     exchange_code_for_token,
     get_github_user,
@@ -20,9 +21,11 @@ GITHUB_AUTH_URL = (
     f"&scope=repo,user"
 )
 
+# jwt create
 def create_jwt(user_id: int) -> str:
     return jwt.encode({"sub": str(user_id)}, settings.SECRET_KEY, algorithm="HS256")
 
+# user_id
 def get_current_user_id(token: str) -> int:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
@@ -31,22 +34,28 @@ def get_current_user_id(token: str) -> int:
         raise HTTPException(status_code=401, detail="Geçersiz token")
 
 
+# redirect user to github login
 @router.get("/auth/github/login")
 def github_login():
     """Kullanıcıyı GitHub login sayfasına yönlendir"""
     return RedirectResponse(GITHUB_AUTH_URL)
 
 
+# callback
 @router.get("/auth/github/callback")
 async def github_callback(code: str, db: Session = Depends(get_db)):
-    """GitHub callback — code → token → kullanıcı oluştur → JWT dön"""
     access_token = await exchange_code_for_token(code)
     github_user  = await get_github_user(access_token)
     user         = await get_or_create_user(db, github_user, access_token)
-    jwt_token    = create_jwt(user.id)
+    
+    # Repoları DB'ye kaydet
+    await sync_user_repos(db, user.id, access_token)
+    
+    jwt_token = create_jwt(user.id)
     return RedirectResponse(f"http://localhost:5173?token={jwt_token}")
 
 
+# user info
 @router.get("/me")
 async def get_me(token: str, db: Session = Depends(get_db)):
     user_id = get_current_user_id(token)
@@ -54,7 +63,7 @@ async def get_me(token: str, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
 
-    # GitHub'dan güncel profil bilgilerini çek
+    # fetch from github
     github_user = await get_github_user(user.access_token)
 
     return {
@@ -63,7 +72,6 @@ async def get_me(token: str, db: Session = Depends(get_db)):
         "email":      user.email or github_user.get("email"),
         "avatar_url": user.avatar_url,
         "github_id":  user.github_id,
-        # GitHub'dan ekstra alanlar
         "name":       github_user.get("name"),
         "bio":        github_user.get("bio"),
         "location":   github_user.get("location"),
@@ -76,6 +84,7 @@ async def get_me(token: str, db: Session = Depends(get_db)):
     }
 
 
+# get repo
 @router.get("/repos")
 async def get_repos(token: str, db: Session = Depends(get_db)):
     """Kullanıcının repolarını getir"""

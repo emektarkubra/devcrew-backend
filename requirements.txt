@@ -21,3 +21,14 @@ email-validator==2.2.0
 
 python-jose[cryptography]
 httpx
+
+
+
+
+langchain
+langgraph
+langchain-community
+
+langchain-tavily
+langchain-google-genai
+pydantic

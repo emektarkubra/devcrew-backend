@@ -2,13 +2,16 @@ import httpx
 from sqlalchemy.orm import Session
 from app.models.user import User
 from app.core.config import settings
+from fastapi import HTTPException
+from app.models.repo import Repo
 
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL  = "https://api.github.com/user"
 GITHUB_REPOS_URL = "https://api.github.com/user/repos"
 
+
+# code -> token
 async def exchange_code_for_token(code: str) -> str:
-    """GitHub'dan gelen code ile access_token al"""
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             GITHUB_TOKEN_URL,
@@ -19,9 +22,14 @@ async def exchange_code_for_token(code: str) -> str:
                 "code":          code,
             },
         )
-    return resp.json()["access_token"]
+    data = resp.json()
+    
+    if "access_token" not in data:
+        raise HTTPException(status_code=400, detail=f"GitHub token hatası: {data}")
+    return data["access_token"]
 
 
+# get user
 async def get_github_user(access_token: str) -> dict:
     """GitHub'dan kullanıcı bilgilerini çek"""
     async with httpx.AsyncClient() as client:
@@ -32,6 +40,7 @@ async def get_github_user(access_token: str) -> dict:
     return resp.json()
 
 
+# get or create user
 async def get_or_create_user(db: Session, github_user: dict, access_token: str) -> User:
     """Kullanıcı DB'de varsa getir, yoksa oluştur"""
     user = db.query(User).filter(User.github_id == github_user["id"]).first()
@@ -53,6 +62,7 @@ async def get_or_create_user(db: Session, github_user: dict, access_token: str) 
     return user
 
 
+# get repos
 async def fetch_user_repos(access_token: str) -> list:
     """Kullanıcının GitHub repolarını çek"""
     async with httpx.AsyncClient() as client:
