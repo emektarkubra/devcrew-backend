@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:15
+    image: pgvector/pgvector:pg15
     container_name: postgres
     restart: always
     environment:
@@ -20,17 +20,25 @@ services:
   web:
     build: .
     container_name: fastapi_app
-    working_dir: /app                          # ← Çalışma dizini
+    working_dir: /app
     command: uvicorn app.main:app --host 0.0.0.0 --port ${FASTAPI_PORT} --reload
     ports:
       - "${FASTAPI_PORT}:${FASTAPI_PORT}"
     depends_on:
       db:
-        condition: service_healthy             # ← DB sağlıklı olunca başla
+        condition: service_healthy
     env_file:
       - .env
+    environment:
+      - TRANSFORMERS_CACHE=/app/models
+      - HF_HOME=/app/models
+      - SENTENCE_TRANSFORMERS_HOME=/app/models
     volumes:
-      - ./:/app                                # ← Hot-reload için kaynak kodu mount
+      - ./:/app
+      - ./models:/app/models
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
 
 volumes:
   pgdata:

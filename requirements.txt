@@ -32,3 +32,9 @@ langchain-community
 langchain-tavily
 langchain-google-genai
 pydantic
+
+pgvector
+python-jose
+
+sentence-transformers
+langchain_groq
