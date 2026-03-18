@@ -5,6 +5,7 @@ from app.routes.router import router
 from app.models.user import User
 from app.models.repo import Repo
 from app.models.embedding import CodeEmbedding
+from app.models.code_query_history import CodeQueryHistory
 
 Base.metadata.create_all(bind=engine)  # Tabloları oluştur
 

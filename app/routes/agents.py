@@ -8,9 +8,9 @@ from app.models.user import User
 from app.routes.users import get_current_user_id
 from app.services.agents.indexer import index_repo
 from app.services.agents.codebase_qa import codebase_qa
+from app.models.code_query_history import CodeQueryHistory
 
 router = APIRouter(prefix="/agents")
-
 
 class IndexPayload(BaseModel):
     token: str
@@ -23,6 +23,11 @@ class QAPayload(BaseModel):
     owner: str
     repo:  str
     query: str
+
+class HistoryPayload(BaseModel):
+    token: str
+    owner: str
+    repo:  str
 
 
 # repoyu indeksler
@@ -59,3 +64,31 @@ async def qa(payload: QAPayload, db: Session = Depends(get_db)):
         user_id  = user.id,
         db       = db,
     )
+
+
+
+# code-base history
+@router.post("/codebase-qa/history")
+async def qa_history(payload: HistoryPayload, db: Session = Depends(get_db)):
+    user_id   = get_current_user_id(payload.token)
+    repo_full = f"{payload.owner}/{payload.repo}"
+
+    history = (
+        db.query(CodeQueryHistory)
+        .filter(
+            CodeQueryHistory.user_id == user_id,
+            CodeQueryHistory.repo    == repo_full,
+        )
+        .order_by(CodeQueryHistory.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    return [
+        {
+            "question":   h.query,
+            "filesFound": h.file_count,
+            "timeAgo":    h.created_at,
+        }
+        for h in history
+    ]

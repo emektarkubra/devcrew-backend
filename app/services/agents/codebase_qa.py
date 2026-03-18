@@ -5,6 +5,7 @@ from langchain_core.output_parsers import StrOutputParser
 from app.models.embedding import CodeEmbedding
 from app.services.agents.indexer import get_embedding
 from app.core.config import settings
+from app.models.code_query_history import CodeQueryHistory
 
 # LLM
 llm = ChatGroq(
@@ -69,6 +70,16 @@ async def codebase_qa(query: str, owner: str, repo: str, user_id: int, db: Sessi
         "context":  context,
         "question": query,
     })
+
+
+    # save history 
+    db.add(CodeQueryHistory(
+        user_id    = user_id,
+        repo       = repo_full,
+        query      = query,
+        file_count = len(list({r.file_path for r in results})),
+    ))
+    db.commit()
 
     return {
         "answer": answer,
