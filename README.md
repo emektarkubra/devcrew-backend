@@ -1,54 +1,107 @@
-# README
+# AI Dev Team — Backend
 
----
-
-## Ön Koşullar
+## Ön koşullar
 
 - [Docker](https://www.docker.com/get-started) yüklü olmalı
 - [Docker Compose](https://docs.docker.com/compose/install/) yüklü olmalı
+- GitHub OAuth App oluşturulmuş olmalı
+- Groq API key alınmış olmalı ([console.groq.com](https://console.groq.com))
 
 ---
 
-## Kurulum ve Çalıştırma
+## Kurulum
 
-1. Repoyu klonlayın:
+### 1. Repoyu klonla
 
 ```bash
 git clone <REPO_URL>
 cd <REPO_ADI>
-````
+```
 
-2. Ortam değişkenlerini ayarlayın:
+### 2. `.env` dosyası oluştur
 
+```bash
+cp .env.example .env
+```
 
-`.env` dosyasında aşağıdaki ayarları kendi bilgisayarınıza göre düzenleyin:
+`.env` dosyasını düzenle:
 
 ```env
-# PostgreSQL ayarları
-POSTGRES_USER=DB-USERNAME      
-POSTGRES_PASSWORD=DB-PASSWORD    
-POSTGRES_DB=DB-NAME           
-POSTGRES_PORT=DB-PORT             
+# PostgreSQL
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_password
+POSTGRES_DB=your_db
+DATABASE_URL=postgresql://postgres:your_password@db:5432/your_db
 
-# FastAPI ayarları
-FASTAPI_PORT=8000               # Host makinede FastAPI portu
-DATABASE_URL=postgresql+psycopg2://POSTGRES_USER:POSTGRES_PASSWORD@db:5432/POSTGRES_DB
+# FastAPI
+FASTAPI_PORT=8000
 SECRET_KEY=your_secret_key_here
+
+# GitHub OAuth
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+
+# Groq
+GROQ_API_KEY=your_groq_api_key
 ```
 
-```
+### 3. GitHub OAuth App oluştur
 
-3. Docker Compose ile uygulamayı başlatın:
+1. [github.com/settings/developers](https://github.com/settings/developers) → **New OAuth App**
+2. **Homepage URL:** `http://localhost:5173`
+3. **Callback URL:** `http://localhost:8000/auth/github/callback`
+4. `Client ID` ve `Client Secret`'ı `.env`'e yapıştır
+
+### 4. Groq API key al
+
+1. [console.groq.com](https://console.groq.com) → ücretsiz kayıt
+2. **API Keys** → **Create API Key**
+3. Key'i `.env`'e yapıştır
+
+### 5. Docker ile başlat
 
 ```bash
 docker-compose up --build
 ```
 
-* Docker, PostgreSQL’i `POSTGRES_PORT` ile host makinenize yönlendirir.
-* FastAPI, `FASTAPI_PORT` üzerinden erişilebilir.
+İlk çalıştırmada embedding modeli otomatik indirilir (~280MB), biraz zaman alabilir.
 
-4. Tarayıcıda API’ye erişim:
+---
 
-* API root: [http://localhost:8000](http://localhost:8000)
-* Swagger docs: [http://localhost:8000/docs](http://localhost:8000/docs)
-* ReDoc: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+## Erişim
+
+| Servis | URL |
+|--------|-----|
+| API | http://localhost:8000 |
+| Swagger | http://localhost:8000/docs |
+| ReDoc | http://localhost:8000/redoc |
+
+---
+
+## Kullanım
+
+### 1. GitHub ile giriş yap
+`http://localhost:8000/auth/github/login`
+
+### 2. Repo indexle
+```bash
+curl -X POST http://localhost:8000/agents/index \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "JWT_TOKEN",
+    "owner": "github_kullanici_adi",
+    "repo": "repo_adi"
+  }'
+```
+
+### 3. Repo'ya soru sor
+```bash
+curl -X POST http://localhost:8000/agents/codebase-qa \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "JWT_TOKEN",
+    "owner": "github_kullanici_adi",
+    "repo": "repo_adi",
+    "query": "authentication nerede implement edilmiş?"
+  }'
+```

@@ -13,18 +13,22 @@ llm = ChatGroq(
     api_key=settings.GROQ_API_KEY,
 )
 
-# prompt
 prompt = PromptTemplate(
-    template="""
-    Aşağıdaki soruyu yalnızca sağlanan bağlama göre yanıtlayın.
-    Eğer cevabı bağlamda bulamazsanız, "Cevabı bilmiyorum." deyin.
+    template="""You are an expert code assistant. Answer the question based ONLY on the provided code context.
 
-    Bağlam: {context}
+Rules:
+- Answer in the same language as the question
+- If the answer is not in the context, say "I couldn't find this in the codebase."
+- Include file names and line references when relevant
+- Be specific and concise
+- If you find relevant code, show it
 
-    Soru: {question}
+Context:
+{context}
 
-    Cevap:
-    """,
+Question: {question}
+
+Answer:""",
     input_variables=["context", "question"]
 )
 
