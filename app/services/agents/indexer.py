@@ -2,9 +2,10 @@ import httpx
 import base64
 from app.models.embedding import CodeEmbedding
 from sqlalchemy.orm import Session
-
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+from app.core.exceptions import RepoIndexError, EmbeddingError
+from app.core.exceptions import RepoIndexError, EmbeddingError
 
 
 # split text
@@ -63,18 +64,19 @@ async def fetch_file_content(access_token: str, owner: str, repo: str, path: str
 
 # repo index
 async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_token: str):
-
     repo_full = f"{owner}/{repo}"
 
-    # Eski embedding'leri temizle
-    db.query(CodeEmbedding).filter(
-        CodeEmbedding.user_id == user_id,
-        CodeEmbedding.repo    == repo_full,
-    ).delete()
-    db.commit()
+    try:
+        db.query(CodeEmbedding).filter(
+            CodeEmbedding.user_id == user_id,
+            CodeEmbedding.repo    == repo_full,
+        ).delete()
+        db.commit()
+    except Exception as e:
+        raise RepoIndexError(repo=repo_full)
 
-    total_chunks = 0
     files = await fetch_repo_files(access_token, owner, repo)
+    total_chunks = 0
 
     for file in files:
         try:
@@ -82,7 +84,11 @@ async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_to
             chunks  = chunk_text(content)
 
             for chunk in chunks:
-                vector = get_embedding(f"passage: {chunk}")
+                try:
+                    vector = get_embedding(f"passage: {chunk}")
+                except Exception:
+                    raise EmbeddingError(file_path=file["path"])
+
                 db.add(CodeEmbedding(
                     user_id    = user_id,
                     repo       = repo_full,
@@ -92,6 +98,8 @@ async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_to
                 ))
                 total_chunks += 1
 
+        except EmbeddingError:
+            raise
         except Exception as e:
             print(f"Hata: {file['path']} — {e}")
             continue

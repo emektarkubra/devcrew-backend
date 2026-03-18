@@ -6,6 +6,8 @@ from app.models.embedding import CodeEmbedding
 from app.services.agents.indexer import get_embedding
 from app.core.config import settings
 from app.models.code_query_history import CodeQueryHistory
+from app.core.exceptions import RepoNotIndexedError
+
 
 # LLM
 llm = ChatGroq(
@@ -57,7 +59,7 @@ async def codebase_qa(query: str, owner: str, repo: str, user_id: int, db: Sessi
     )
 
     if not results:
-        return {"answer": "Bu repo henüz indexlenmemiş.", "files": []}
+        raise RepoNotIndexedError(repo=repo_full)
 
     # context
     context = "\n\n".join([
