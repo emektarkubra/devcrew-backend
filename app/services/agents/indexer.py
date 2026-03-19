@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from app.core.exceptions import RepoIndexError, EmbeddingError
-from app.core.exceptions import RepoIndexError, EmbeddingError
 
 
 # split text
@@ -31,35 +30,39 @@ def get_embedding(text: str) -> list[float]:
     return get_embedding_model().embed_query(text)
 
 
+# default branch
+async def get_default_branch(access_token: str, owner: str, repo: str) -> str:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"https://api.github.com/repos/{owner}/{repo}",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+    return resp.json().get("default_branch", "main")
 
 
 # fetch repo file list
-async def fetch_repo_files(access_token: str, owner: str, repo: str) -> list[dict]:
+async def fetch_repo_files(access_token: str, owner: str, repo: str, branch: str) -> list[dict]:
     async with httpx.AsyncClient() as client:
         resp = await client.get(
-            f"https://api.github.com/repos/{owner}/{repo}/git/trees/main?recursive=1",
+            f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1",
             headers={"Authorization": f"Bearer {access_token}"},
         )
-
     tree = resp.json().get("tree", [])
-
     return [
         f for f in tree
         if f["type"] == "blob" and f["path"].endswith((".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".java"))
     ]
 
 
-
 # fetch file content
-async def fetch_file_content(access_token: str, owner: str, repo: str, path: str) -> str:
+async def fetch_file_content(access_token: str, owner: str, repo: str, path: str, branch: str) -> str:
     async with httpx.AsyncClient() as client:
         resp = await client.get(
-            f"https://api.github.com/repos/{owner}/{repo}/contents/{path}",
+            f"https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={branch}",
             headers={"Authorization": f"Bearer {access_token}"},
         )
     data = resp.json()
     return base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
-
 
 
 # repo index
@@ -72,15 +75,16 @@ async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_to
             CodeEmbedding.repo    == repo_full,
         ).delete()
         db.commit()
-    except Exception as e:
+    except Exception:
         raise RepoIndexError(repo=repo_full)
 
-    files = await fetch_repo_files(access_token, owner, repo)
+    branch       = await get_default_branch(access_token, owner, repo)
+    files        = await fetch_repo_files(access_token, owner, repo, branch)
     total_chunks = 0
 
     for file in files:
         try:
-            content = await fetch_file_content(access_token, owner, repo, file["path"])
+            content = await fetch_file_content(access_token, owner, repo, file["path"], branch)
             chunks  = chunk_text(content)
 
             for chunk in chunks:
@@ -112,5 +116,3 @@ async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_to
         "files_indexed": len(files),
         "total_chunks":  total_chunks,
     }
-
-
