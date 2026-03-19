@@ -6,10 +6,13 @@ from app.models.user import User
 from app.models.repo import Repo
 from app.models.embedding import CodeEmbedding
 from app.models.code_query_history import CodeQueryHistory
+from app.core.error_handlers import register_exception_handlers
 
-Base.metadata.create_all(bind=engine)  # Tabloları oluştur
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+register_exception_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,
