@@ -29,9 +29,8 @@ async def exchange_code_for_token(code: str) -> str:
     return data["access_token"]
 
 
-# get user
+# get user info from github
 async def get_github_user(access_token: str) -> dict:
-    """GitHub'dan kullanıcı bilgilerini çek"""
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             GITHUB_USER_URL,
@@ -42,7 +41,6 @@ async def get_github_user(access_token: str) -> dict:
 
 # get or create user
 async def get_or_create_user(db: Session, github_user: dict, access_token: str) -> User:
-    """Kullanıcı DB'de varsa getir, yoksa oluştur"""
     user = db.query(User).filter(User.github_id == github_user["id"]).first()
 
     if user:
@@ -64,7 +62,6 @@ async def get_or_create_user(db: Session, github_user: dict, access_token: str) 
 
 # get repos
 async def fetch_user_repos(access_token: str) -> list:
-    """Kullanıcının GitHub repolarını çek"""
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             GITHUB_REPOS_URL,

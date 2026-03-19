@@ -9,5 +9,7 @@ class CodeQueryHistory(Base):
     user_id    = Column(Integer, ForeignKey("users.id"))
     repo       = Column(String)
     query      = Column(Text)
+    response   = Column(Text, nullable=True)
     file_count = Column(Integer)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
