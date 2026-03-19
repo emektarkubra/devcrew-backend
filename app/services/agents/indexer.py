@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from app.core.exceptions import RepoIndexError, EmbeddingError
+from app.core.constants import SUPPORTED_EXTENSIONS
 
 
 # split text
@@ -50,7 +51,7 @@ async def fetch_repo_files(access_token: str, owner: str, repo: str, branch: str
     tree = resp.json().get("tree", [])
     return [
         f for f in tree
-        if f["type"] == "blob" and f["path"].endswith((".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".java"))
+        if f["type"] == "blob" and f["path"].endswith(SUPPORTED_EXTENSIONS)
     ]
 
 
@@ -78,8 +79,8 @@ async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_to
     except Exception:
         raise RepoIndexError(repo=repo_full)
 
-    branch       = await get_default_branch(access_token, owner, repo)
-    files        = await fetch_repo_files(access_token, owner, repo, branch)
+    branch = await get_default_branch(access_token, owner, repo)
+    files = await fetch_repo_files(access_token, owner, repo, branch)
     total_chunks = 0
 
     for file in files:
@@ -111,8 +112,8 @@ async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_to
     db.commit()
 
     return {
-        "status":        "success",
-        "repo":          repo_full,
+        "status": "success",
+        "repo": repo_full,
         "files_indexed": len(files),
-        "total_chunks":  total_chunks,
+        "total_chunks": total_chunks,
     }

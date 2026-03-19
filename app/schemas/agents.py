@@ -36,9 +36,11 @@ class IndexResponse(BaseModel):
 class QAResponse(BaseModel):
     answer: str
     files:  List[str]
+    suggestions: List[str] = []
 
 class HistoryItemResponse(BaseModel):
     question:   str
+    response:   Optional[str] = None
     filesFound: int
     timeAgo:    datetime
 

@@ -28,10 +28,10 @@ async def index_repository(payload: IndexRequest, db: Session = Depends(get_db))
 
     return await index_repo(
         access_token = user.access_token,
-        owner        = payload.owner,
-        repo         = payload.repo,
-        user_id      = user.id,
-        db           = db,
+        owner = payload.owner,
+        repo = payload.repo,
+        user_id = user.id,
+        db = db,
     )
 
 
@@ -45,11 +45,11 @@ async def qa(payload: QARequest, db: Session = Depends(get_db)):
         raise UserNotFoundError(user_id=user_id)
 
     return await codebase_qa(
-        query   = payload.query,
-        owner   = payload.owner,
-        repo    = payload.repo,
+        query = payload.query,
+        owner = payload.owner,
+        repo = payload.repo,
         user_id = user.id,
-        db      = db,
+        db = db,
     )
 
 
@@ -72,9 +72,10 @@ async def qa_history(payload: HistoryRequest, db: Session = Depends(get_db)):
 
     return [
         HistoryItemResponse(
-            question   = h.query,
+            question = h.query,
+            response = h.response,
             filesFound = h.file_count,
-            timeAgo    = h.created_at,
+            timeAgo = h.created_at,
         )
         for h in history
     ]
