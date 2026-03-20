@@ -21,6 +21,12 @@ class HistoryRequest(BaseModel):
     owner: str
     repo:  str
 
+class PRReviewRequest(BaseModel):
+    token:     str
+    owner:     str
+    repo:      str
+    pr_number: int
+
 
 # response
 class FileRef(BaseModel):
@@ -46,3 +52,4 @@ class HistoryItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
+

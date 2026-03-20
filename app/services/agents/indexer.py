@@ -4,8 +4,9 @@ from app.models.embedding import CodeEmbedding
 from sqlalchemy.orm import Session
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
-from app.core.exceptions import RepoIndexError, EmbeddingError
+from app.core.exceptions import RepoIndexError, EmbeddingError, AppError
 from app.core.constants import SUPPORTED_EXTENSIONS
+from app.core.config import settings
 
 
 # split text
@@ -33,37 +34,88 @@ def get_embedding(text: str) -> list[float]:
 
 # default branch
 async def get_default_branch(access_token: str, owner: str, repo: str) -> str:
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"https://api.github.com/repos/{owner}/{repo}",
-            headers={"Authorization": f"Bearer {access_token}"},
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        if resp.status_code == 404:
+            raise AppError(
+                code="REPO_NOT_FOUND",
+                message="Repo bulunamadı.",
+                status_code=404,
+                details={"repo": f"{owner}/{repo}"},
+            )
+        return resp.json().get("default_branch", "main")
+    except AppError:
+        raise
+    except Exception as e:
+        raise AppError(
+            code="GITHUB_API_ERROR",
+            message="GitHub API'ye erişilirken hata oluştu.",
+            status_code=500,
+            details={"error": str(e)},
         )
-    return resp.json().get("default_branch", "main")
 
 
 # fetch repo file list
 async def fetch_repo_files(access_token: str, owner: str, repo: str, branch: str) -> list[dict]:
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1",
-            headers={"Authorization": f"Bearer {access_token}"},
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}/git/trees/{branch}?recursive=1",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        if resp.status_code == 404:
+            raise AppError(
+                code="REPO_TREE_NOT_FOUND",
+                message="Repo dosya listesi alınamadı.",
+                status_code=404,
+                details={"repo": f"{owner}/{repo}", "branch": branch},
+            )
+        tree = resp.json().get("tree", [])
+        return [
+            f for f in tree
+            if f["type"] == "blob" and f["path"].endswith(SUPPORTED_EXTENSIONS)
+        ]
+    except AppError:
+        raise
+    except Exception as e:
+        raise AppError(
+            code="GITHUB_API_ERROR",
+            message="Repo dosyaları alınırken hata oluştu.",
+            status_code=500,
+            details={"error": str(e)},
         )
-    tree = resp.json().get("tree", [])
-    return [
-        f for f in tree
-        if f["type"] == "blob" and f["path"].endswith(SUPPORTED_EXTENSIONS)
-    ]
 
 
 # fetch file content
 async def fetch_file_content(access_token: str, owner: str, repo: str, path: str, branch: str) -> str:
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={branch}",
-            headers={"Authorization": f"Bearer {access_token}"},
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}/contents/{path}?ref={branch}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        if resp.status_code == 404:
+            raise AppError(
+                code="FILE_NOT_FOUND",
+                message=f"{path} dosyası bulunamadı.",
+                status_code=404,
+                details={"path": path},
+            )
+        data = resp.json()
+        return base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
+    except AppError:
+        raise
+    except Exception as e:
+        raise AppError(
+            code="FILE_FETCH_ERROR",
+            message="Dosya içeriği alınırken hata oluştu.",
+            status_code=500,
+            details={"path": path, "error": str(e)},
         )
-    data = resp.json()
-    return base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
 
 
 # repo index
@@ -79,8 +131,8 @@ async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_to
     except Exception:
         raise RepoIndexError(repo=repo_full)
 
-    branch = await get_default_branch(access_token, owner, repo)
-    files = await fetch_repo_files(access_token, owner, repo, branch)
+    branch       = await get_default_branch(access_token, owner, repo)
+    files        = await fetch_repo_files(access_token, owner, repo, branch)
     total_chunks = 0
 
     for file in files:
@@ -105,6 +157,8 @@ async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_to
 
         except EmbeddingError:
             raise
+        except AppError:
+            raise
         except Exception as e:
             print(f"Hata: {file['path']} — {e}")
             continue
@@ -112,8 +166,8 @@ async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_to
     db.commit()
 
     return {
-        "status": "success",
-        "repo": repo_full,
+        "status":        "success",
+        "repo":          repo_full,
         "files_indexed": len(files),
-        "total_chunks": total_chunks,
+        "total_chunks":  total_chunks,
     }

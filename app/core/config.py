@@ -9,5 +9,7 @@ class Settings(BaseSettings): # env variables okuyup Python objesine Ã§eviren sÄ
     GITHUB_CLIENT_SECRET: str
     FASTAPI_PORT: int = 8000
     GROQ_API_KEY: str 
+    GITHUB_URL: str
+    GITHUB_API_URL:str
 
 settings = Settings()
