@@ -190,7 +190,12 @@ async def pr_review(
         pr_title    = title,
         risk_score  = risk_score,
         issue_count = len(issues),
+        issues      = issues,   
+        diff        = parse_diff(diff_text),
+        files       = files,       
+        summary     = analysis.get("summary", ""),
     ))
+
     db.commit()
 
     return {

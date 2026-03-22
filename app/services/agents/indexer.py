@@ -74,10 +74,17 @@ async def fetch_repo_files(access_token: str, owner: str, repo: str, branch: str
                 status_code=404,
                 details={"repo": f"{owner}/{repo}", "branch": branch},
             )
+        
+
+        excludedFiles = {'.venv', 'venv', 'node_modules', '__pycache__', '.git', 'dist', 'build'}
+
         tree = resp.json().get("tree", [])
+    
         return [
             f for f in tree
-            if f["type"] == "blob" and f["path"].endswith(SUPPORTED_EXTENSIONS)
+            if f["type"] == "blob"
+            and f["path"].endswith(SUPPORTED_EXTENSIONS)
+            and not any(f["path"].startswith(file + '/') for file in excludedFiles)
         ]
     except AppError:
         raise
@@ -143,27 +150,26 @@ async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_to
             for chunk in chunks:
                 try:
                     vector = get_embedding(f"passage: {chunk}")
-                except Exception:
-                    raise EmbeddingError(file_path=file["path"])
+                    db.add(CodeEmbedding(
+                        user_id    = user_id,
+                        repo       = repo_full,
+                        file_path  = file["path"],
+                        chunk_text = chunk,
+                        embedding  = vector,
+                    ))
+                    total_chunks += 1
+                except Exception as e:
+                    print(f"EMBED ERROR: {file['path']} — {e}")
+                    continue  # tek chunk hata verse bile devam et
 
-                db.add(CodeEmbedding(
-                    user_id    = user_id,
-                    repo       = repo_full,
-                    file_path  = file["path"],
-                    chunk_text = chunk,
-                    embedding  = vector,
-                ))
-                total_chunks += 1
+            print(f"✓ {file['path']} — {len(chunks)} chunks")
 
-        except EmbeddingError:
-            raise
-        except AppError:
-            raise
         except Exception as e:
-            print(f"Hata: {file['path']} — {e}")
-            continue
+            print(f"FILE ERROR: {file['path']} — {e}")
+            continue  # tek dosya hata verse bile devam et
 
     db.commit()
+    print(f"INDEX DONE: {total_chunks} chunks")
 
     return {
         "status":        "success",

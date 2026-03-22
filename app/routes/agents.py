@@ -118,11 +118,16 @@ async def pr_review_history(payload: PRHistoryRequest, db: Session = Depends(get
 
     return [
         {
-            "pr":         f"#{h.pr_number}",
-            "title":      h.pr_title,
-            "riskScore":  h.risk_score,
-            "issueCount": h.issue_count,
-            "timeAgo":    h.created_at,
+            "pr":           f"#{h.pr_number}",
+            "title":        h.pr_title,
+            "riskScore":    h.risk_score,
+            "issueCount":   h.issue_count,
+            "issues":       h.issues,
+            "diff":         h.diff,
+            "files":        h.files,
+            "summary":      h.summary,
+            "changedFiles": len(h.files) if h.files else 0,
+            "timeAgo":      h.created_at,
         }
         for h in history
-    ]
+]
