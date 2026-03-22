@@ -12,9 +12,10 @@ from app.schemas.agents import (
     IndexRequest, IndexResponse,
     QARequest, QAResponse,
     HistoryRequest, HistoryItemResponse,
-    PRReviewRequest,
+    PRReviewRequest, PRHistoryRequest
 )
 from app.services.agents.pr_review import pr_review
+from app.models.pr_review_history import PrReviewQueryHistory
 
 router = APIRouter(prefix="/agents")
 
@@ -96,3 +97,31 @@ async def review_pr(payload: PRReviewRequest, db: Session = Depends(get_db)):
         access_token = user.access_token,
         db           = db,
     )
+
+
+
+@router.post("/pr-review/history")
+async def pr_review_history(payload: PRHistoryRequest, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(payload.token)
+    repo_full = f"{payload.owner}/{payload.repo}"
+
+    history = (
+        db.query(PrReviewQueryHistory)
+        .filter(
+            PrReviewQueryHistory.user_id == user_id,
+            PrReviewQueryHistory.repo    == repo_full,
+        )
+        .order_by(PrReviewQueryHistory.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    return [
+        {
+            "pr":         f"#{h.pr_number}",
+            "riskScore":  h.risk_score,
+            "issueCount": h.issue_count,
+            "timeAgo":    h.created_at,
+        }
+        for h in history
+    ]

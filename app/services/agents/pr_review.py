@@ -6,6 +6,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from app.core.config import settings
 from app.core.exceptions import AppError, PRNotFoundError
+from app.models.pr_review_history import PrReviewQueryHistory
 
 # LLM
 llm = ChatGroq(
@@ -97,9 +98,9 @@ def parse_diff(diff_text: str) -> list[dict]:
     lines = []
     for line in diff_text.split("\n"):
         if line.startswith("+") and not line.startswith("+++"):
-            lines.append({"type": "add",     "content": line})
+            lines.append({"type": "add", "content": line})
         elif line.startswith("-") and not line.startswith("---"):
-            lines.append({"type": "remove",  "content": line})
+            lines.append({"type": "remove", "content": line})
         else:
             lines.append({"type": "context", "content": line})
     return lines[:100]
@@ -130,8 +131,8 @@ async def pr_review(
 
     try:
         pr_details = await fetch_pr_details(access_token, owner, repo, pr_number)
-        diff_text  = await fetch_pr_diff(access_token, owner, repo, pr_number)
-        pr_files   = await fetch_pr_files(access_token, owner, repo, pr_number)
+        diff_text = await fetch_pr_diff(access_token, owner, repo, pr_number)
+        pr_files = await fetch_pr_files(access_token, owner, repo, pr_number)
     except PRNotFoundError:
         raise
     except Exception as e:
@@ -142,8 +143,8 @@ async def pr_review(
             details={"error": str(e)},
         )
 
-    title         = pr_details.get("title", "")
-    author        = pr_details.get("user", {}).get("login", "")
+    title = pr_details.get("title", "")
+    author = pr_details.get("user", {}).get("login", "")
     changed_files = pr_details.get("changed_files", 0)
 
     try:
@@ -163,32 +164,43 @@ async def pr_review(
 
     try:
         cleaned_answer = answer.strip().replace("```json", "").replace("```", "")
-        analysis       = json.loads(cleaned_answer)
+        analysis = json.loads(cleaned_answer)
     except Exception:
         analysis = {"issues": [], "risk_score": 0, "summary": answer}
 
-    issues     = analysis.get("issues", [])
+    issues = analysis.get("issues", [])
     risk_score = calculate_risk(issues)
 
     files = [
         {
-            "name":    f["filename"].split("/")[-1],
-            "path":    f["filename"],
-            "changes": f"+{f['additions']} -{f['deletions']}",
-            "risk":    "high" if f["changes"] > 50 else "medium" if f["changes"] > 20 else "low",
+            "name": file["filename"].split("/")[-1],
+            "path": file["filename"],
+            "changes": f"+{file['additions']} -{file['deletions']}",
+            "risk": "high" if file["changes"] > 50 else "medium" if file["changes"] > 20 else "low",
         }
-        for f in pr_files
+        for file in pr_files
     ]
 
+
+    # history
+    db.add(PrReviewQueryHistory(
+        user_id     = user_id,
+        repo        = f"{owner}/{repo}",
+        pr_number   = pr_number,
+        risk_score  = risk_score,
+        issue_count = len(issues),
+    ))
+    db.commit()
+
     return {
-        "title":          title,
-        "number":         f"#{pr_number}",
-        "author":         author,
-        "riskScore":      risk_score,
-        "changedFiles":   changed_files,
+        "title": title,
+        "number": f"#{pr_number}",
+        "author": author,
+        "riskScore": risk_score,
+        "changedFiles": changed_files,
         "criticalIssues": len([i for i in issues if i.get("severity") == "high"]),
-        "issues":         issues,
-        "diff":           parse_diff(diff_text),
-        "files":          files,
-        "summary":        analysis.get("summary", ""),
+        "issues": issues,
+        "diff": parse_diff(diff_text),
+        "files": files,
+        "summary": analysis.get("summary", ""),
     }
