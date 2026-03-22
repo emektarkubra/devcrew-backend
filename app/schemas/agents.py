@@ -32,6 +32,11 @@ class PRHistoryRequest(BaseModel):
     owner: str
     repo:  str
 
+class PRListRequest(BaseModel):
+    token: str
+    owner: str
+    repo:  str
+
 # response
 class FileRef(BaseModel):
     name: str

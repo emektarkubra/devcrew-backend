@@ -118,3 +118,42 @@ async def fetch_user_repos(access_token: str) -> list:
             status_code=500,
             details={"error": str(e)},
         )
+    
+# get repos pr's
+async def fetch_repo_prs(access_token: str, owner: str, repo: str) -> list:
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}/pulls",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept":        "application/vnd.github.v3+json",
+                },
+                params={
+                    "state":    "open",
+                    "per_page": 20,
+                    "sort":     "updated",
+                },
+            )
+        if resp.status_code == 401:
+            raise AuthAppError(
+                code="GITHUB_UNAUTHORIZED",
+                message="Invalid or expired GitHub token.",
+            )
+        if resp.status_code == 404:
+            raise AppError(
+                code="REPO_NOT_FOUND",
+                message="Repo bulunamadı.",
+                status_code=404,
+                details={"owner": owner, "repo": repo},
+            )
+        return resp.json()
+    except (AuthAppError, AppError):
+        raise
+    except Exception as e:
+        raise AppError(
+            code="GITHUB_PRS_ERROR",
+            message="PR listesi alınırken hata oluştu.",
+            status_code=500,
+            details={"error": str(e)},
+        )

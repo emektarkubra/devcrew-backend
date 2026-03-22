@@ -187,6 +187,7 @@ async def pr_review(
         user_id     = user_id,
         repo        = f"{owner}/{repo}",
         pr_number   = pr_number,
+        pr_title    = title,
         risk_score  = risk_score,
         issue_count = len(issues),
     ))
