@@ -6,6 +6,7 @@ from app.models.user import User
 from app.models.repo import Repo
 from app.models.embedding import CodeEmbedding
 from app.models.code_query_history import CodeQueryHistory
+from app.models.pr_review_history import PrReviewQueryHistory
 from app.core.error_handlers import register_exception_handlers
 
 Base.metadata.create_all(bind=engine)

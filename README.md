@@ -12,20 +12,17 @@
 ## Kurulum
 
 ### 1. Repoyu klonla
-
 ```bash
 git clone <REPO_URL>
 cd <REPO_ADI>
 ```
 
 ### 2. `.env` dosyası oluştur
-
 ```bash
 cp .env.example .env
 ```
 
 `.env` dosyasını düzenle:
-
 ```env
 # PostgreSQL
 POSTGRES_USER=postgres
@@ -43,6 +40,10 @@ GITHUB_CLIENT_SECRET=your_github_client_secret
 
 # Groq
 GROQ_API_KEY=your_groq_api_key
+
+# GitHub
+GITHUB_URL=github_url
+GITHUB_API_URL=github_api_url
 ```
 
 ### 3. GitHub OAuth App oluştur
@@ -59,7 +60,6 @@ GROQ_API_KEY=your_groq_api_key
 3. Key'i `.env`'e yapıştır
 
 ### 5. Docker ile başlat
-
 ```bash
 docker-compose up --build
 ```
@@ -75,33 +75,5 @@ docker-compose up --build
 | API | http://localhost:8000 |
 | Swagger | http://localhost:8000/docs |
 | ReDoc | http://localhost:8000/redoc |
-
----
-
-## Kullanım
-
-### 1. GitHub ile giriş yap
-`http://localhost:8000/auth/github/login`
-
-### 2. Repo indexle
-```bash
-curl -X POST http://localhost:8000/agents/index \
-  -H "Content-Type: application/json" \
-  -d '{
-    "token": "JWT_TOKEN",
-    "owner": "github_kullanici_adi",
-    "repo": "repo_adi"
-  }'
-```
-
-### 3. Repo'ya soru sor
-```bash
-curl -X POST http://localhost:8000/agents/codebase-qa \
-  -H "Content-Type: application/json" \
-  -d '{
-    "token": "JWT_TOKEN",
-    "owner": "github_kullanici_adi",
-    "repo": "repo_adi",
-    "query": "authentication nerede implement edilmiş?"
-  }'
-```
+| GitHub API Docs | https://docs.github.com/en/rest |
+| GitHub API | https://api.github.com |

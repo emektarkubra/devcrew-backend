@@ -190,3 +190,11 @@ class EmbeddingError(AppError):
             status_code=500,
             details={"file_path": file_path} if file_path else None,
         )
+
+class PRNotFoundError(NotFoundAppError):
+    def __init__(self, *, pr_number: Optional[int] = None):
+        super().__init__(
+            code="PR_NOT_FOUND",
+            message="PR bulunamadı.",
+            details={"pr_number": pr_number} if pr_number else None,
+        )

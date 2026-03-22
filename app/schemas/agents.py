@@ -21,6 +21,21 @@ class HistoryRequest(BaseModel):
     owner: str
     repo:  str
 
+class PRReviewRequest(BaseModel):
+    token:     str
+    owner:     str
+    repo:      str
+    pr_number: int
+
+class PRHistoryRequest(BaseModel):
+    token: str
+    owner: str
+    repo:  str
+
+class PRListRequest(BaseModel):
+    token: str
+    owner: str
+    repo:  str
 
 # response
 class FileRef(BaseModel):

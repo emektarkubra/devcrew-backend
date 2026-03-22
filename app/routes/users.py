@@ -15,6 +15,8 @@ from app.services.user_service import (
 )
 from app.schemas.users import UserDetailResponse
 from app.schemas.repos import RepoResponse
+from app.schemas.agents import PRListRequest
+from app.services.user_service import fetch_repo_prs
 
 router = APIRouter()
 
@@ -94,3 +96,27 @@ async def get_repos(token: str, db: Session = Depends(get_db)):
         raise UserNotFoundError(user_id=user_id)
 
     return db.query(Repo).filter(Repo.owner_id == user_id).all()
+
+
+
+
+@router.post("/pr-list")
+async def get_pr_list(payload: PRListRequest, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(payload.token)
+    user    = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    prs = await fetch_repo_prs(user.access_token, payload.owner, payload.repo)
+
+    return [
+        {
+            "number": pr["number"],
+            "title":  pr["title"],
+            "author": pr["user"]["login"],
+            "state":  pr["state"],
+            "url":    pr["html_url"],
+        }
+        for pr in prs
+    ]
