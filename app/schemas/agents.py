@@ -37,6 +37,18 @@ class PRListRequest(BaseModel):
     owner: str
     repo:  str
 
+
+class DebugRequest(BaseModel):
+    token: str
+    owner: str
+    repo:  str
+    error: str
+
+class DebugHistoryRequest(BaseModel):
+    token: str
+    owner: str
+    repo:  str
+
 # response
 class FileRef(BaseModel):
     name: str

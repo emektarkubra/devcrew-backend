@@ -12,14 +12,17 @@ from app.schemas.agents import (
     IndexRequest, IndexResponse,
     QARequest, QAResponse,
     HistoryRequest, HistoryItemResponse,
-    PRReviewRequest, PRHistoryRequest
+    PRReviewRequest, PRHistoryRequest,DebugRequest,DebugHistoryRequest
 )
 from app.services.agents.pr_review import pr_review
 from app.models.pr_review_history import PrReviewQueryHistory
+from app.services.agents.debugging import debug_error
+from app.models.debug_history import DebugHistory
 
 router = APIRouter(prefix="/agents")
 
 
+# index
 @router.post("/index", response_model=IndexResponse)
 async def index_repository(payload: IndexRequest, db: Session = Depends(get_db)):
     user_id = get_current_user_id(payload.token)
@@ -37,6 +40,7 @@ async def index_repository(payload: IndexRequest, db: Session = Depends(get_db))
     )
 
 
+# codebase-qa
 @router.post("/codebase-qa", response_model=QAResponse)
 async def qa(payload: QARequest, db: Session = Depends(get_db)):
     user_id = get_current_user_id(payload.token)
@@ -81,6 +85,7 @@ async def qa_history(payload: HistoryRequest, db: Session = Depends(get_db)):
     ]
 
 
+# pr-review
 @router.post("/pr-review")
 async def review_pr(payload: PRReviewRequest, db: Session = Depends(get_db)):
     user_id = get_current_user_id(payload.token)
@@ -131,3 +136,53 @@ async def pr_review_history(payload: PRHistoryRequest, db: Session = Depends(get
         }
         for h in history
 ]
+
+
+# debugging
+@router.post("/debug")
+async def debug(payload: DebugRequest, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(payload.token)
+    user    = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    return await debug_error(
+        error   = payload.error,
+        owner   = payload.owner,
+        repo    = payload.repo,
+        user_id = user.id,
+        db      = db,
+    )
+
+
+
+@router.post("/debug/history")
+async def debug_history(payload: DebugHistoryRequest, db: Session = Depends(get_db)):
+    user_id   = get_current_user_id(payload.token)
+    repo_full = f"{payload.owner}/{payload.repo}"
+
+    history = (
+        db.query(DebugHistory)
+        .filter(
+            DebugHistory.user_id == user_id,
+            DebugHistory.repo    == repo_full,
+        )
+        .order_by(DebugHistory.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    return [
+        {
+            "error":         h.error,
+            "rootCause":     h.root_cause,
+            "severity":      h.severity,
+            "affectedFiles": h.affected_files,
+            "fix":           h.fix,
+            "explanation":   h.explanation,
+            "resolved":      h.resolved,
+            "timeAgo":       h.created_at,
+        }
+        for h in history
+    ]
