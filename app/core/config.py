@@ -11,5 +11,6 @@ class Settings(BaseSettings): # env variables okuyup Python objesine Ã§eviren sÄ
     GROQ_API_KEY: str 
     GITHUB_URL: str
     GITHUB_API_URL:str
+    FRONTEND_URL:str
 
 settings = Settings()

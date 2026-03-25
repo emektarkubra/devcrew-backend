@@ -21,7 +21,7 @@ from app.services.user_service import fetch_repo_prs
 router = APIRouter()
 
 GITHUB_AUTH_URL = (
-    "https://github.com/login/oauth/authorize"
+    f"{settings.GITHUB_URL}/login/oauth/authorize"
     f"?client_id={settings.GITHUB_CLIENT_ID}"
     f"&scope=repo,user"
 )
@@ -56,7 +56,7 @@ async def github_callback(code: str, db: Session = Depends(get_db)):
     await sync_user_repos(db, user.id, access_token)
 
     jwt_token = create_jwt(user.id)
-    return RedirectResponse(f"http://localhost:5173?token={jwt_token}")
+    return RedirectResponse(f"{settings.FRONTEND_URL}/overview?token={jwt_token}")
 
 
 @router.get("/profile", response_model=UserDetailResponse)
