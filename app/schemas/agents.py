@@ -49,6 +49,23 @@ class DebugHistoryRequest(BaseModel):
     owner: str
     repo:  str
 
+class DocumentationRequest(BaseModel):
+    token: str
+    owner: str
+    repo:  str
+    target: str  
+    doc_type: str 
+
+class DocumentationHistoryRequest(BaseModel):
+    token: str
+    owner: str
+    repo:  str
+
+class RepoFilesRequest(BaseModel):
+    token: str
+    owner: str
+    repo:  str
+
 # response
 class FileRef(BaseModel):
     name: str
