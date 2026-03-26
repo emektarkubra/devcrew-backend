@@ -2,22 +2,28 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List
 from app.core.database import get_db
+from app.models.documentation_history import DocumentationHistory
+from app.models.documentation_history import DocumentationHistory
 from app.models.user import User
 from app.models.code_query_history import CodeQueryHistory
 from app.routes.users import get_current_user_id
+from app.services.agents.documentation import generate_documentation
 from app.services.agents.indexer import index_repo
 from app.services.agents.codebase_qa import codebase_qa
-from app.core.exceptions import UserNotFoundError, PRNotFoundError
+from app.core.exceptions import UserNotFoundError
 from app.schemas.agents import (
     IndexRequest, IndexResponse,
     QARequest, QAResponse,
     HistoryRequest, HistoryItemResponse,
-    PRReviewRequest, PRHistoryRequest,DebugRequest,DebugHistoryRequest
+    PRReviewRequest, PRHistoryRequest,DebugRequest,
+    DebugHistoryRequest, DocumentationRequest, 
+    DocumentationHistoryRequest,RepoFilesRequest
 )
 from app.services.agents.pr_review import pr_review
 from app.models.pr_review_history import PrReviewQueryHistory
 from app.services.agents.debugging import debug_error
 from app.models.debug_history import DebugHistory
+from app.services.repo_service import fetch_all_repo_files
 
 router = APIRouter(prefix="/agents")
 
@@ -186,3 +192,69 @@ async def debug_history(payload: DebugHistoryRequest, db: Session = Depends(get_
         }
         for h in history
     ]
+
+
+# documentation
+@router.post("/documentation")
+async def generate_docs(payload: DocumentationRequest, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(payload.token)
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    return await generate_documentation(
+        target = payload.target,
+        owner = payload.owner,
+        repo = payload.repo,
+        doc_type = payload.doc_type,
+        user_id = user.id,
+        db = db,
+        access_token = user.access_token,
+    )
+
+
+@router.post("/documentation/history")
+async def documentation_history(payload: DocumentationHistoryRequest, db: Session = Depends(get_db)):
+    user_id   = get_current_user_id(payload.token)
+    repo_full = f"{payload.owner}/{payload.repo}"
+
+    history = (
+        db.query(DocumentationHistory)
+        .filter(
+            DocumentationHistory.user_id == user_id,
+            DocumentationHistory.repo    == repo_full,
+        )
+        .order_by(DocumentationHistory.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    return [
+        {
+            "target":      h.target,
+            "docType":     h.doc_type,
+            "description": h.description,
+            "content":     h.content,
+            "timeAgo":     h.created_at,
+        }
+        for h in history
+    ]
+
+
+# repo files
+@router.post("/repo-files")
+async def repo_files(payload: RepoFilesRequest, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(payload.token)
+    user    = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    files = await fetch_all_repo_files(
+        access_token = user.access_token,
+        owner        = payload.owner,
+        repo         = payload.repo,
+    )
+
+    return { "files": files }

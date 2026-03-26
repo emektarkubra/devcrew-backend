@@ -198,3 +198,34 @@ class PRNotFoundError(NotFoundAppError):
             message="PR bulunamadı.",
             details={"pr_number": pr_number} if pr_number else None,
         )
+
+class FileNotFoundInRepoError(NotFoundAppError):
+    def __init__(self, *, file_path: Optional[str] = None, repo: Optional[str] = None):
+        super().__init__(
+            code="FILE_NOT_FOUND_IN_REPO",
+            message="File not found in repository.",
+            details={
+                "file_path": file_path,
+                "repo": repo,
+            },
+        )
+
+
+class GitHubAPIError(AppError):
+    def __init__(self, *, status_code: int = 500, repo: Optional[str] = None):
+        super().__init__(
+            code="GITHUB_API_ERROR",
+            message="GitHub API returned an error.",
+            status_code=status_code,
+            details={"repo": repo} if repo else None,
+        )
+
+
+class DocumentationGenerationError(AppError):
+    def __init__(self, *, target: Optional[str] = None):
+        super().__init__(
+            code="DOCUMENTATION_GENERATION_ERROR",
+            message="Documentation generation failed.",
+            status_code=500,
+            details={"target": target} if target else None,
+        )
