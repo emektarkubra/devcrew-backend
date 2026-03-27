@@ -17,13 +17,16 @@ from app.schemas.agents import (
     HistoryRequest, HistoryItemResponse,
     PRReviewRequest, PRHistoryRequest,DebugRequest,
     DebugHistoryRequest, DocumentationRequest, 
-    DocumentationHistoryRequest,RepoFilesRequest
+    DocumentationHistoryRequest,RepoFilesRequest,
+    TestGeneratorRequest, TestHistoryRequest,
 )
 from app.services.agents.pr_review import pr_review
 from app.models.pr_review_history import PrReviewQueryHistory
 from app.services.agents.debugging import debug_error
 from app.models.debug_history import DebugHistory
 from app.services.repo_service import fetch_all_repo_files
+from app.services.agents.test_generator import generate_tests
+from app.models.test_history import TestHistory
 
 router = APIRouter(prefix="/agents")
 
@@ -194,6 +197,54 @@ async def debug_history(payload: DebugHistoryRequest, db: Session = Depends(get_
     ]
 
 
+# test generator
+@router.post("/test-generator")
+async def test_generator(payload: TestGeneratorRequest, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(payload.token)
+    user    = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    return await generate_tests(
+        target       = payload.target,
+        owner        = payload.owner,
+        repo         = payload.repo,
+        user_id      = user.id,
+        framework    = payload.framework,
+        access_token = user.access_token,
+        db           = db,
+    )
+
+
+@router.post("/test-generator/history")
+async def test_generator_history(payload: TestHistoryRequest, db: Session = Depends(get_db)):
+    user_id   = get_current_user_id(payload.token)
+    repo_full = f"{payload.owner}/{payload.repo}"
+
+    history = (
+        db.query(TestHistory)
+        .filter(
+            TestHistory.user_id == user_id,
+            TestHistory.repo    == repo_full,
+        )
+        .order_by(TestHistory.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    return [
+        {
+            "target":     h.target,
+            "testCount":  h.test_count,
+            "coverage":   h.coverage,
+            "tests":      h.tests,
+            "framework":  h.framework,
+            "timeAgo":    h.created_at,
+        }
+        for h in history
+    ]
+
 # documentation
 @router.post("/documentation")
 async def generate_docs(payload: DocumentationRequest, db: Session = Depends(get_db)):
@@ -258,3 +309,6 @@ async def repo_files(payload: RepoFilesRequest, db: Session = Depends(get_db)):
     )
 
     return { "files": files }
+
+
+
