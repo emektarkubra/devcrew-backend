@@ -66,6 +66,19 @@ class RepoFilesRequest(BaseModel):
     owner: str
     repo:  str
 
+
+class TestGeneratorRequest(BaseModel):
+    token:     str
+    owner:     str
+    repo:      str
+    target:    str
+    framework: str = "pytest"
+
+class TestHistoryRequest(BaseModel):
+    token: str
+    owner: str
+    repo:  str
+
 # response
 class FileRef(BaseModel):
     name: str
