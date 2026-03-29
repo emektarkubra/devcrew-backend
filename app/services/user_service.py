@@ -9,7 +9,7 @@ from app.models.repo import Repo
 # code -> token
 async def exchange_code_for_token(code: str) -> str:
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{settings.GITHUB_URL}/login/oauth/access_token",
                 headers={"Accept": "application/json"},
@@ -42,7 +42,7 @@ async def exchange_code_for_token(code: str) -> str:
 # get user info from github
 async def get_github_user(access_token: str) -> dict:
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
                 f"{settings.GITHUB_API_URL}/user",
                 headers={"Authorization": f"Bearer {access_token}"},
@@ -97,7 +97,7 @@ async def get_or_create_user(db: Session, github_user: dict, access_token: str) 
 # get repos
 async def fetch_user_repos(access_token: str) -> list:
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
                 f"{settings.GITHUB_API_URL}/user/repos",
                 headers={"Authorization": f"Bearer {access_token}"},
@@ -122,7 +122,7 @@ async def fetch_user_repos(access_token: str) -> list:
 # get repos pr's
 async def fetch_repo_prs(access_token: str, owner: str, repo: str) -> list:
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
                 f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}/pulls",
                 headers={
@@ -143,7 +143,7 @@ async def fetch_repo_prs(access_token: str, owner: str, repo: str) -> list:
         if resp.status_code == 404:
             raise AppError(
                 code="REPO_NOT_FOUND",
-                message="Repo bulunamadı.",
+                message="Not found repository.",
                 status_code=404,
                 details={"owner": owner, "repo": repo},
             )
@@ -153,7 +153,7 @@ async def fetch_repo_prs(access_token: str, owner: str, repo: str) -> list:
     except Exception as e:
         raise AppError(
             code="GITHUB_PRS_ERROR",
-            message="PR listesi alınırken hata oluştu.",
+            message="An error occurred while fetching PR list.",
             status_code=500,
             details={"error": str(e)},
         )
