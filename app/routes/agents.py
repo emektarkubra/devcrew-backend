@@ -108,10 +108,11 @@ async def qa_history(payload: HistoryRequest, db: Session = Depends(get_db)):
                 question   = h.query,
                 response   = h.response,
                 filesFound = h.file_count,
+                files      = h.files or [],
                 timeAgo    = h.created_at,
             )
             for h in history
-        ]
+]
     except AppError:
         raise
     except Exception as e:

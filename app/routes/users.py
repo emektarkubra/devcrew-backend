@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.exceptions import UserNotFoundError, AuthAppError, AppError
 from app.models.user import User
 from app.models.repo import Repo
+from app.services.repo_service import sync_user_repos
 from app.services.user_service import (
     exchange_code_for_token,
     get_github_user,
@@ -67,6 +68,13 @@ async def github_callback(code: str, db: Session = Depends(get_db)):
         github_user  = await get_github_user(access_token)
         user         = await get_or_create_user(db, github_user, access_token)
         jwt_token    = create_jwt(user.id)
+
+        try:
+            await sync_user_repos(db=db, user_id=user.id, access_token=access_token)
+        except Exception as e:
+            print(f"⚠️ sync_user_repos failed: {e}")
+            # login'i engelleme, devam et
+
         return RedirectResponse(f"{settings.FRONTEND_URL}/overview?token={jwt_token}")
     except AppError:
         raise

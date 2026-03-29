@@ -9,6 +9,13 @@ from app.models.embedding import CodeEmbedding
 from app.models.code_query_history import CodeQueryHistory
 from app.models.pr_review_history import PrReviewQueryHistory
 from app.core.error_handlers import register_exception_handlers
+# from sqlalchemy import text
+
+
+# # create_all'dan önce ekle
+# with engine.connect() as conn:
+#     conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+#     conn.commit()
 
 Base.metadata.create_all(bind=engine)
 

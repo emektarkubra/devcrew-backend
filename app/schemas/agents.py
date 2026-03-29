@@ -97,8 +97,9 @@ class QAResponse(BaseModel):
 
 class HistoryItemResponse(BaseModel):
     question:   str
-    response:   Optional[str] = None
+    response:   str
     filesFound: int
+    files:      list = []
     timeAgo:    datetime
 
     class Config:
