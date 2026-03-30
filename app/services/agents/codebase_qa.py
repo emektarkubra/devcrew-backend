@@ -7,67 +7,22 @@ from app.services.agents.indexer import get_embedding
 from app.core.config import settings
 from app.models.code_query_history import CodeQueryHistory
 from app.core.exceptions import RepoNotIndexedError
+from app.core.prompts import CODEBASE_QA_PROMPT, CODEBASE_SUGGESTION_PROMPT
 import json
 
+# LLM
 llm = ChatGroq(
     model_name="llama-3.3-70b-versatile",
     temperature=0,
     api_key=settings.GROQ_API_KEY,
 )
 
-prompt = PromptTemplate(
-    template="""You are a senior software engineer and expert code analyst with deep expertise in reading, understanding, and explaining codebases across all languages and frameworks.
-
-You are analyzing a GitHub repository. Below are the most relevant code snippets retrieved based on the developer's question.
-
----
-
-Repository Code Context:
-{context}
-
-Developer's Question:
-{question}
-
----
-
-Instructions:
-- Answer in clear, flowing prose — no headers, no bullet points, no markdown formatting
-- Start with a direct answer to the question
-- Reference specific files, functions, and classes using backticks like `functionName()`
-- Explain not just what the code does but why it works that way
-- If the question is about overall structure, describe the purpose, tech stack, and how components interact
-- Be specific and ground your answer in the actual code provided
-- If the context is insufficient, say so clearly
-- Keep the tone conversational but technical — like a senior developer explaining to a colleague
-
-Answer:""",
-    input_variables=["context", "question"]
-)
-
-chain = prompt | llm | StrOutputParser()
-
-suggestion_prompt = PromptTemplate(
-    template="""You are a senior developer reviewing a codebase. Based on the code context and the current question, generate exactly 4 insightful follow-up questions a developer might want to explore next.
-
-Rules:
-- Questions must be directly related to the code shown
-- Each question should explore a different aspect: functionality, architecture, performance, or potential issues
-- Keep questions short and specific (max 10 words each)
-- Return ONLY a valid JSON array of 4 strings, nothing else
-
-Code Context:
-{context}
-
-Current Question:
-{question}
-
-JSON array:""",
-    input_variables=["context", "question"]
-)
-
-suggestion_chain = suggestion_prompt | llm | StrOutputParser()
+# chain
+chain = CODEBASE_QA_PROMPT | llm | StrOutputParser()
+suggestion_chain = CODEBASE_SUGGESTION_PROMPT | llm | StrOutputParser()
 
 
+# codebase qa
 async def codebase_qa(query: str, owner: str, repo: str, user_id: int, db: Session) -> dict:
     repo_full    = f"{owner}/{repo}"
     query_vector = get_embedding(f"query: {query}")
