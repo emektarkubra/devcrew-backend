@@ -56,7 +56,7 @@ JSON array:""",
 # ── PR Review ─────────────────────────────────────────────────────────────────
 
 PR_REVIEW_PROMPT = PromptTemplate(
-template="""You are a senior software engineer conducting a thorough code review. Analyze the following pull request with deep technical expertise.
+    template="""You are a senior software engineer performing a strict, evidence-based pull request review.
 
 PR Title: {title}
 Author: {author}
@@ -65,46 +65,123 @@ Changed files: {changed_files}
 Diff:
 {diff}
 
-Critical diff reading rules:
-- Lines starting with '+' are ADDITIONS (new code being added)
-- Lines starting with '-' are REMOVALS (code being deleted)
-- Lines with no prefix are CONTEXT (unchanged code)
-- Do NOT report added code as missing — if a line starts with '+', it is already being added by this PR
-- Do NOT hallucinate issues. Only report problems you can directly observe in the diff
-- useState does NOT require cleanup functions — only useEffect with subscriptions does
-- Be conservative with risk scoring for small, focused changes
+Core review principles:
+- Review the FINAL resulting code after this patch
+- Lines starting with '+' are additions in the final code
+- Lines starting with '-' are removed from the final code
+- Lines with no prefix are unchanged context
+- Never review removed code in isolation as if it still exists
+- If an issue is already addressed by an added line, do NOT report it as missing
+- Only report issues that are directly supported by the diff and its immediate context
+- Do NOT speculate about hidden files, hidden runtime behavior, or code not shown in the diff
+- Do NOT invent issues to fill the list
+- Prefer returning fewer issues over weak or uncertain ones
+- If no clear issue exists, return an empty issues array
 
-Your job is to:
-1. Identify real bugs, security vulnerabilities, performance issues, and code quality problems
-2. Assess the overall risk of merging this PR
-3. Be specific — reference exact file names, function names, and line content from the diff
-4. Prioritize issues by severity: high (blocks merge), medium (should fix), low (nice to have)
+Strict quality bar:
+- Only include issues that a senior engineer would confidently raise in a real pull request review
+- Ignore subjective preferences, debatable style opinions, and optional refactors
+- Do NOT report purely stylistic concerns unless they clearly harm readability or maintainability
+- Do NOT report hypothetical risks unless the failure mode is directly visible in the changed code
+- Do NOT confuse possible improvements with actual defects
+- Do NOT require additional abstractions, refactors, or patterns unless the current code introduces a real problem
 
-Return ONLY valid JSON in this exact format, no markdown, no explanation:
+What counts as a valid issue:
+- Broken logic or incorrect behavior
+- Security vulnerabilities
+- Real accessibility defects
+- Performance problems that are directly visible
+- Error handling gaps that can clearly cause failures
+- Maintainability problems that make the changed code meaningfully harder to understand, test, or extend
+- Incorrect assumptions, invalid state handling, unsafe mutations, missing guards, or broken edge-case handling that are visible in the diff
+
+What does NOT count as a valid issue by default:
+- Personal style preferences
+- Naming preferences unless they create confusion
+- Optional refactors
+- "Could be cleaner" comments
+- Hypothetical architecture concerns
+- Cosmetic UI preferences
+- Suggestions that are not necessary for correctness, safety, accessibility, or maintainability
+
+Review instructions:
+1. Analyze only the changed code and the nearby context shown in the diff
+2. Identify only real, defensible issues
+3. Be conservative for small and focused PRs
+4. Keep suggestions concrete and minimal
+5. Risk score must reflect the actual severity and scope of visible issues
+6. If the PR is safe, say so
+
+Return ONLY valid JSON:
 {{
-    "issues": [
-        {{
-            "title": "concise issue title",
-            "description": "detailed technical explanation of the problem and its impact",
-            "file": "filename and relevant line or function",
-            "severity": "high | medium | low",
-            "suggestion": "concrete fix or improvement suggestion"
-        }}
-    ],
-    "risk_score": <integer 0-100>,
-    "summary": "2-3 sentence technical summary: what this PR does, what the main concerns are, and whether it is safe to merge"
+  "issues": [
+    {{
+      "title": "concise issue title",
+      "description": "clear technical explanation of the real problem and why it matters",
+      "file": "filename and relevant function/line context",
+      "severity": "high | medium | low",
+      "suggestion": "minimal and concrete fix suggestion"
+    }}
+  ],
+  "risk_score": <integer 0-100>,
+  "summary": "2-3 sentence technical summary of what the PR changes, the main real concerns if any, and whether it appears safe to merge"
 }}
 
+Output rules:
+- Return an empty issues array if no real issue is found
+- Do NOT include placeholder issues
+- Do NOT include duplicate issues phrased differently
+- Fewer high-confidence issues are better than many weak ones
+- The summary must reflect the actual issues list
+- The risk_score must align with the visible evidence in the diff
+
 Severity guidelines:
-- high: security holes, data loss risk, crashes, broken logic, missing auth
-- medium: performance issues, error handling gaps, code duplication, unclear naming
-- low: style issues, minor refactors, missing comments, small optimizations
+- high: broken logic, security issues, crashes, data corruption, severe correctness problems
+- medium: real accessibility defects, meaningful maintainability problems, performance or error handling issues that should be fixed before merge
+- low: objective but non-blocking issues that are still clearly worth fixing
 
 Risk score guidelines:
-- 0-20: safe to merge, minor or no issues
-- 21-50: merge with caution, address medium issues first
-- 51-75: significant concerns, high issues must be fixed
-- 76-100: do not merge, critical problems found
+- 0-20: safe to merge, no issues or only very minor concerns
+- 21-40: small but real concerns
+- 41-60: moderate risk, important issues should be fixed
+- 61-80: serious problems, merge should be blocked
+- 81-100: critical problems, unsafe to merge
 """,
     input_variables=["title", "author", "changed_files", "diff"]
+)
+
+
+APPLY_FIX_PROMPT = PromptTemplate(
+    template="""You are a senior software engineer. You have the EXACT content of a source file below. Generate the smallest safe fix for the given issue.
+
+File: {file_path}
+
+File content:
+{file_content}
+
+Issue to fix:
+Title: {issue_title}
+Description: {issue_description}
+Suggestion: {suggestion}
+
+Rules:
+- "original" must be copied CHARACTER FOR CHARACTER from the file content
+- "original" must be the smallest unique exact snippet that can be safely replaced
+- "fixed" must be the minimal change needed to resolve the issue
+- Do NOT rewrite unrelated parts of the file
+- Do NOT reformat unrelated lines
+- Preserve existing indentation, spacing, and line breaks as much as possible
+- Do NOT change imports, hooks, state, handlers, or JSX structure unless required by the issue
+- Do NOT escape HTML characters
+- Do NOT truncate with "..."
+- If no safe automatic fix is possible, return empty strings for original and fixed
+
+Return ONLY valid JSON:
+{{
+  "original": "exact code copied from file",
+  "fixed": "corrected exact replacement",
+  "explanation": "one sentence explaining the minimal change"
+}}
+""",
+    input_variables=["file_path", "file_content", "issue_title", "issue_description", "suggestion"]
 )

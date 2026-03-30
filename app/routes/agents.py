@@ -11,15 +11,15 @@ from app.services.agents.indexer import index_repo
 from app.services.agents.codebase_qa import codebase_qa
 from app.core.exceptions import UserNotFoundError, AppError
 from app.schemas.agents import (
-    IndexRequest, IndexResponse,
+    ApplyFixRequest, IndexRequest, IndexResponse,
     QARequest, QAResponse,
     HistoryRequest, HistoryItemResponse,
     PRReviewRequest, PRHistoryRequest, DebugRequest,
     DebugHistoryRequest, DocumentationRequest,
     DocumentationHistoryRequest, RepoFilesRequest,
-    TestGeneratorRequest, TestHistoryRequest,
+    TestGeneratorRequest, TestHistoryRequest, ApplyFixesToBranchRequest
 )
-from app.services.agents.pr_review import pr_review
+from app.services.agents.pr_review import generate_fixes, pr_review, apply_fixes_to_branch
 from app.models.pr_review_history import PrReviewQueryHistory
 from app.services.agents.debugging import debug_error
 from app.models.debug_history import DebugHistory
@@ -426,4 +426,59 @@ async def repo_files(payload: RepoFilesRequest, db: Session = Depends(get_db)):
             message     = "An error occurred while fetching repository files.",
             status_code = 500,
             details     = {"owner": payload.owner, "repo": payload.repo},
+        ) from e
+
+
+# apply fixes
+@router.post("/pr-review/apply-fixes")
+async def apply_fixes_endpoint(payload: ApplyFixRequest, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(payload.token)
+    user    = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    try:
+        return await generate_fixes(
+            access_token = user.access_token,
+            owner        = payload.owner,
+            repo         = payload.repo,
+            pr_number    = payload.pr_number,
+            issues       = payload.issues,
+        )
+    except AppError:
+        raise
+    except Exception as e:
+        raise AppError(
+            code        = "APPLY_FIX_ERROR",
+            message     = "An error occurred while generating fixes.",
+            status_code = 500,
+            details     = {"error": str(e)},
+        ) from e
+
+
+@router.post("/pr-review/apply-fixes-to-branch")
+async def apply_fixes_to_branch_endpoint(payload: ApplyFixesToBranchRequest, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(payload.token)
+    user    = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    try:
+        return await apply_fixes_to_branch(
+            access_token = user.access_token,
+            owner        = payload.owner,
+            repo         = payload.repo,
+            pr_number    = payload.pr_number,
+            fixes        = payload.fixes,
+        )
+    except AppError:
+        raise
+    except Exception as e:
+        raise AppError(
+            code        = "APPLY_FIX_TO_BRANCH_ERROR",
+            message     = "An error occurred while applying fixes to branch.",
+            status_code = 500,
+            details     = {"error": str(e)},
         ) from e
