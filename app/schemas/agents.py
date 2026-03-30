@@ -1,5 +1,3 @@
-# app/schemas/agents.py
-
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, List
@@ -79,6 +77,20 @@ class TestHistoryRequest(BaseModel):
     owner: str
     repo:  str
 
+class ApplyFixRequest(BaseModel):
+    token:     str
+    owner:     str
+    repo:      str
+    pr_number: int
+    issues:    list
+
+class ApplyFixesToBranchRequest(BaseModel):
+    token:     str
+    owner:     str
+    repo:      str
+    pr_number: int
+    fixes:     list
+
 # response
 class FileRef(BaseModel):
     name: str
@@ -97,8 +109,9 @@ class QAResponse(BaseModel):
 
 class HistoryItemResponse(BaseModel):
     question:   str
-    response:   Optional[str] = None
+    response:   str
     filesFound: int
+    files:      list = []
     timeAgo:    datetime
 
     class Config:

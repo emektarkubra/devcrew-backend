@@ -7,6 +7,7 @@ from app.services.agents.indexer import get_embedding
 from app.core.config import settings
 from app.models.code_query_history import CodeQueryHistory
 from app.core.exceptions import RepoNotIndexedError
+from app.core.prompts import CODEBASE_QA_PROMPT, CODEBASE_SUGGESTION_PROMPT
 import json
 
 # LLM
@@ -16,47 +17,14 @@ llm = ChatGroq(
     api_key=settings.GROQ_API_KEY,
 )
 
-# prompt
-prompt = PromptTemplate(
-    template="""You are an expert code analyst. Analyze the following code snippets from a GitHub repository and answer the question clearly and concisely.
-
-    Repository context:
-    {context}
-
-    Question: {question}
-
-    Instructions:
-    - Explain what the code does in plain language
-    - Mention specific files, functions, and classes when relevant
-    - If the question is about the overall repository, summarize its purpose, main features, and tech stack
-    - Be specific and technical but easy to understand
-
-    Answer:""",
-        input_variables=["context", "question"]
-)
-
 # chain
-chain = prompt | llm | StrOutputParser()
-
-# suggestion prompt
-suggestion_prompt = PromptTemplate(
-    template="""Based on this code context, generate exactly 4 short follow-up questions that a developer might want to ask. 
-    Return ONLY a JSON array of 4 strings, nothing else. Example: ["question1", "question2", "question3", "question4"]
-
-    Context: {context}
-    Current question: {question}
-
-    JSON array:""",
-        input_variables=["context", "question"]
-)
-
-# suggestion chain
-suggestion_chain = suggestion_prompt | llm | StrOutputParser()
+chain = CODEBASE_QA_PROMPT | llm | StrOutputParser()
+suggestion_chain = CODEBASE_SUGGESTION_PROMPT | llm | StrOutputParser()
 
 
-# codebase_qa
+# codebase qa
 async def codebase_qa(query: str, owner: str, repo: str, user_id: int, db: Session) -> dict:
-    repo_full = f"{owner}/{repo}"
+    repo_full    = f"{owner}/{repo}"
     query_vector = get_embedding(f"query: {query}")
 
     results = (
@@ -73,39 +41,39 @@ async def codebase_qa(query: str, owner: str, repo: str, user_id: int, db: Sessi
     if not results:
         raise RepoNotIndexedError(repo=repo_full)
 
-    # README
+    # README varsa ekle
     readme = (
         db.query(CodeEmbedding)
         .filter(
-            CodeEmbedding.user_id  == user_id,
-            CodeEmbedding.repo == repo_full,
+            CodeEmbedding.user_id   == user_id,
+            CodeEmbedding.repo      == repo_full,
             CodeEmbedding.file_path.ilike("%readme%"),
         )
         .first()
     )
 
     context = "\n\n".join([
-        f"# {r.file_path}\n{r.chunk_text}"
+        f"### File: {r.file_path}\n```\n{r.chunk_text}\n```"
         for r in results
     ])
 
     if readme and readme not in results:
-        context = f"# README\n{readme.chunk_text}\n\n" + context
+        context = f"### File: README\n```\n{readme.chunk_text}\n```\n\n" + context
 
     answer = chain.invoke({
         "context":  context,
         "question": query,
     })
 
-
-    # suggestion queries
     suggestions = []
     try:
-        raw = suggestion_chain.invoke({"context": context, "question": query})
-        suggestions = json.loads(raw)
+        raw         = suggestion_chain.invoke({"context": context, "question": query})
+        cleaned     = raw.strip().replace("```json", "").replace("```", "")
+        suggestions = json.loads(cleaned)
+        if not isinstance(suggestions, list):
+            suggestions = []
     except Exception:
         suggestions = []
-
 
     files = list({r.file_path for r in results})
 
@@ -113,14 +81,14 @@ async def codebase_qa(query: str, owner: str, repo: str, user_id: int, db: Sessi
         user_id    = user_id,
         repo       = repo_full,
         query      = query,
-        response   = answer, 
+        response   = answer,
         file_count = len(files),
+        files      = files,
     ))
-    
     db.commit()
 
     return {
-        "answer": answer,
-        "files":  files,
+        "answer":      answer,
+        "files":       files,
         "suggestions": suggestions,
     }

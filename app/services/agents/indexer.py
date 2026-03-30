@@ -35,7 +35,7 @@ def get_embedding(text: str) -> list[float]:
 # default branch
 async def get_default_branch(access_token: str, owner: str, repo: str) -> str:
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
                 f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}",
                 headers={"Authorization": f"Bearer {access_token}"},
@@ -43,7 +43,7 @@ async def get_default_branch(access_token: str, owner: str, repo: str) -> str:
         if resp.status_code == 404:
             raise AppError(
                 code="REPO_NOT_FOUND",
-                message="Repo bulunamadı.",
+                message="Not found repository.",
                 status_code=404,
                 details={"repo": f"{owner}/{repo}"},
             )
@@ -53,7 +53,7 @@ async def get_default_branch(access_token: str, owner: str, repo: str) -> str:
     except Exception as e:
         raise AppError(
             code="GITHUB_API_ERROR",
-            message="GitHub API'ye erişilirken hata oluştu.",
+            message="An error occurred while accessing the GitHub API.",
             status_code=500,
             details={"error": str(e)},
         )
@@ -62,7 +62,7 @@ async def get_default_branch(access_token: str, owner: str, repo: str) -> str:
 # fetch repo file list
 async def fetch_repo_files(access_token: str, owner: str, repo: str, branch: str) -> list[dict]:
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
                 f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}/git/trees/{branch}?recursive=1",
                 headers={"Authorization": f"Bearer {access_token}"},
@@ -70,7 +70,7 @@ async def fetch_repo_files(access_token: str, owner: str, repo: str, branch: str
         if resp.status_code == 404:
             raise AppError(
                 code="REPO_TREE_NOT_FOUND",
-                message="Repo dosya listesi alınamadı.",
+                message="Repo file list could not be fetched.",
                 status_code=404,
                 details={"repo": f"{owner}/{repo}", "branch": branch},
             )
@@ -91,7 +91,7 @@ async def fetch_repo_files(access_token: str, owner: str, repo: str, branch: str
     except Exception as e:
         raise AppError(
             code="GITHUB_API_ERROR",
-            message="Repo dosyaları alınırken hata oluştu.",
+            message="An error occurred while fetching repo files.",
             status_code=500,
             details={"error": str(e)},
         )
@@ -100,28 +100,42 @@ async def fetch_repo_files(access_token: str, owner: str, repo: str, branch: str
 # fetch file content
 async def fetch_file_content(access_token: str, owner: str, repo: str, path: str, branch: str) -> str:
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:  # ← timeout ekle
             resp = await client.get(
                 f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}/contents/{path}?ref={branch}",
                 headers={"Authorization": f"Bearer {access_token}"},
             )
         if resp.status_code == 404:
             raise AppError(
-                code="FILE_NOT_FOUND",
-                message=f"{path} dosyası bulunamadı.",
-                status_code=404,
-                details={"path": path},
+                code        = "FILE_NOT_FOUND",
+                message     = f"{path} file not found.",
+                status_code = 404,
+                details     = {"path": path},
+            )
+        if resp.status_code != 200:
+            raise AppError(
+                code        = "FILE_FETCH_ERROR",
+                message     = f"GitHub returned {resp.status_code} for {path}",
+                status_code = resp.status_code,
+                details     = {"path": path, "status": resp.status_code},
             )
         data = resp.json()
+        if "content" not in data:
+            raise AppError(
+                code        = "FILE_NO_CONTENT",
+                message     = f"{path} has no content field (may be a directory or submodule).",
+                status_code = 400,
+                details     = {"path": path},
+            )
         return base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
     except AppError:
         raise
     except Exception as e:
         raise AppError(
-            code="FILE_FETCH_ERROR",
-            message="Dosya içeriği alınırken hata oluştu.",
-            status_code=500,
-            details={"path": path, "error": str(e)},
+            code        = "FILE_FETCH_ERROR",
+            message     = "An error occurred while fetching file content.",
+            status_code = 500,
+            details     = {"path": path, "error": str(e)},
         )
 
 

@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.exceptions import FileNotFoundInRepoError, GitHubAPIError
 
 async def sync_user_repos(db: Session, user_id: int, access_token: str) -> list:
+    
 
     github_repos = await fetch_user_repos(access_token)
 

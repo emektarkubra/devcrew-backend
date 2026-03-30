@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
 from datetime import datetime, timezone
 from app.core.database import Base
 
@@ -11,5 +11,5 @@ class CodeQueryHistory(Base):
     query      = Column(Text)
     response   = Column(Text, nullable=True)
     file_count = Column(Integer)
+    files      = Column(JSON, default=list) 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    

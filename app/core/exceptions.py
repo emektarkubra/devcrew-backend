@@ -210,7 +210,6 @@ class FileNotFoundInRepoError(NotFoundAppError):
             },
         )
 
-
 class GitHubAPIError(AppError):
     def __init__(self, *, status_code: int = 500, repo: Optional[str] = None):
         super().__init__(
