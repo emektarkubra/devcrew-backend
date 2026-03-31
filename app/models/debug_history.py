@@ -12,7 +12,7 @@ class DebugHistory(Base):
     root_cause     = Column(Text)
     severity       = Column(String)
     affected_files = Column(JSON)
-    fix            = Column(JSON)
+    fix            = Column(Text, nullable=True)
     explanation    = Column(Text)
     resolved       = Column(String, default="false")
     created_at     = Column(DateTime, default=lambda: datetime.now(timezone.utc))

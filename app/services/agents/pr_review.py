@@ -362,17 +362,16 @@ async def generate_fixes(
     return {"fixes": fixes}
 
 
-# ── Apply Fixes to Branch ──────────────────────────────────────────────────────
 
 def normalize(s: str) -> str:
     return '\n'.join(
-        line.expandtabs(4).strip()
+        line.expandtabs(4).strip().rstrip(';')
         for line in s.splitlines()
         if line.expandtabs(4).strip()
     )
 
 
-# find and replace original code with fixed code in file content, while being tolerant to whitespace and indent changes
+# find and replace original code with fixed code
 def find_and_replace(content: str, original: str, fixed: str) -> str | None:
     norm_content  = normalize(content)
     norm_original = normalize(original)
@@ -381,25 +380,25 @@ def find_and_replace(content: str, original: str, fixed: str) -> str | None:
         return None
 
     content_lines  = content.splitlines()
-    original_lines = [l for l in original.splitlines() if l.expandtabs(4).strip()]
+    original_lines = [l for l in original.splitlines() if l.expandtabs(4).strip().rstrip(';')]
 
     if not original_lines:
         return None
 
-    first_line_stripped = original_lines[0].expandtabs(4).strip()
+    first_line_stripped = original_lines[0].expandtabs(4).strip().rstrip(';')
     start_idx = None
 
     for i, line in enumerate(content_lines):
-        if line.expandtabs(4).strip() != first_line_stripped:
+        if line.expandtabs(4).strip().rstrip(';') != first_line_stripped:
             continue
         j = 0
         for k in range(i, len(content_lines)):
             if j >= len(original_lines):
                 break
-            stripped = content_lines[k].expandtabs(4).strip()
+            stripped = content_lines[k].expandtabs(4).strip().rstrip(';')
             if stripped == "":
                 continue
-            if stripped == original_lines[j].expandtabs(4).strip():
+            if stripped == original_lines[j].expandtabs(4).strip().rstrip(';'):
                 j += 1
             else:
                 break
@@ -413,15 +412,14 @@ def find_and_replace(content: str, original: str, fixed: str) -> str | None:
     end_idx = start_idx
     j = 0
     for k in range(start_idx, len(content_lines)):
-        stripped = content_lines[k].expandtabs(4).strip()
+        stripped = content_lines[k].expandtabs(4).strip().rstrip(';')
         if stripped == "":
-            end_idx = k
-            continue
-        if j < len(original_lines) and stripped == original_lines[j].expandtabs(4).strip():
+            continue  
+        if j < len(original_lines) and stripped == original_lines[j].expandtabs(4).strip().rstrip(';'):
             j += 1
             end_idx = k
         if j >= len(original_lines):
-            break
+            break 
 
 
     orig_first_line  = next((l for l in original.splitlines() if l.strip()), "")
