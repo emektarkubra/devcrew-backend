@@ -21,11 +21,13 @@ from app.schemas.agents import (
 )
 from app.services.agents.pr_review import generate_fixes, pr_review, apply_fixes_to_branch
 from app.models.pr_review_history import PrReviewQueryHistory
-from app.services.agents.debugging import debug_error
+from app.services.agents.debugging import debug_error, apply_debug_fix_and_open_pr
 from app.models.debug_history import DebugHistory
 from app.services.repo_service import fetch_all_repo_files
 from app.services.agents.test_generator import generate_tests
 from app.models.test_history import TestHistory
+from app.models.embedding import CodeEmbedding
+from app.schemas.agents import ApplyDebugFixRequest
 
 router = APIRouter(prefix="/agents")
 
@@ -56,6 +58,29 @@ async def index_repository(payload: IndexRequest, db: Session = Depends(get_db))
             status_code = 500,
             details     = {"owner": payload.owner, "repo": payload.repo},
         ) from e
+        
+
+# app/routes/agents.py
+@router.post("/check-index")
+async def check_index(payload: IndexRequest, db: Session = Depends(get_db)):
+    user_id   = get_current_user_id(payload.token)
+    repo_full = f"{payload.owner}/{payload.repo}"
+
+    count = db.query(CodeEmbedding).filter(
+        CodeEmbedding.user_id == user_id,
+        CodeEmbedding.repo    == repo_full,
+    ).count()
+
+    return {
+        "indexed":    count > 0,
+        "file_count": db.query(CodeEmbedding.file_path)
+            .filter(
+                CodeEmbedding.user_id == user_id,
+                CodeEmbedding.repo    == repo_full,
+            )
+            .distinct()
+            .count()
+    }
 
 
 # codebase-qa
@@ -207,11 +232,12 @@ async def debug(payload: DebugRequest, db: Session = Depends(get_db)):
 
     try:
         return await debug_error(
-            error   = payload.error,
-            owner   = payload.owner,
-            repo    = payload.repo,
-            user_id = user.id,
-            db      = db,
+            error        = payload.error,
+            owner        = payload.owner,
+            repo         = payload.repo,
+            user_id      = user.id,
+            access_token = user.access_token,  # ← ekle
+            db           = db,
         )
     except AppError:
         raise
@@ -247,7 +273,7 @@ async def debug_history(payload: DebugHistoryRequest, db: Session = Depends(get_
                 "rootCause":     h.root_cause,
                 "severity":      h.severity,
                 "affectedFiles": h.affected_files,
-                "fix":           h.fix,
+                "issues":        h.issues or [],
                 "explanation":   h.explanation,
                 "resolved":      h.resolved,
                 "timeAgo":       h.created_at,
@@ -262,6 +288,34 @@ async def debug_history(payload: DebugHistoryRequest, db: Session = Depends(get_
             message     = "An error occurred while fetching debug history.",
             status_code = 500,
             details     = {"repo": repo_full},
+        ) from e
+
+
+
+@router.post("/debug/apply-fix")
+async def debug_apply_fix(payload: ApplyDebugFixRequest, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(payload.token)
+    user    = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    try:
+        return await apply_debug_fix_and_open_pr(
+            access_token = user.access_token,
+            owner        = payload.owner,
+            repo         = payload.repo,
+            issues       = payload.issues,
+            error        = payload.error,
+        )
+    except AppError:
+        raise
+    except Exception as e:
+        raise AppError(
+            code        = "DEBUG_APPLY_FIX_ERROR",
+            message     = "An error occurred while applying debug fix.",
+            status_code = 500,
+            details     = {"error": str(e)},
         ) from e
 
 

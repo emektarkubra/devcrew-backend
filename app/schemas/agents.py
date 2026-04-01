@@ -91,6 +91,22 @@ class ApplyFixesToBranchRequest(BaseModel):
     pr_number: int
     fixes:     list
 
+
+class ApplyDebugFixRequest(BaseModel):
+    token:        str
+    owner:        str
+    repo:         str
+    fix:          str
+    affected_files: list
+    error:        str
+
+class ApplyDebugFixRequest(BaseModel):
+    token:  str
+    owner:  str
+    repo:   str
+    issues: list
+    error:  str
+
 # response
 class FileRef(BaseModel):
     name: str

@@ -185,3 +185,75 @@ Return ONLY valid JSON:
 """,
     input_variables=["file_path", "file_content", "issue_title", "issue_description", "suggestion"]
 )
+
+
+# ── Debugging ──────────────────────────────────────────────────────────────
+
+DEBUG_PROMPT = PromptTemplate(
+    template="""You are a senior software engineer specializing in debugging. Your job is to analyze errors precisely and provide actionable fixes.
+
+Error / Stacktrace:
+{error}
+
+Related Code Context (retrieved from the actual repository):
+{context}
+
+Analysis rules:
+- Base your analysis ONLY on the error message and the code context provided
+- Do NOT invent file names, function names, or line numbers that are not in the context
+- "affected_files" in each issue must ONLY contain files visible in the code context
+- "severity" must reflect actual impact: critical (app crash/data loss), high (feature broken), medium (degraded behavior), low (minor issue)
+- "fix_suggestion" must be concrete with actual code snippets from the context
+- Do NOT hallucinate fixes for code you cannot see
+- If there are multiple distinct bugs, report each as a separate issue
+- If there is only one bug, return a single issue
+
+Return ONLY valid JSON, no markdown, no explanation:
+{{
+    "root_cause": "one sentence summarizing the main error",
+    "severity": "critical | high | medium | low",
+    "explanation": "2-3 sentences explaining what went wrong and why",
+    "issues": [
+        {{
+            "title": "concise issue title",
+            "description": "clear explanation of this specific bug",
+            "affected_file": "filename only (e.g. App.tsx)",
+            "fix_suggestion": "concrete fix with code example"
+        }}
+    ]
+}}
+""",
+    input_variables=["error", "context"]
+)
+
+
+DEBUG_FIX_PROMPT = PromptTemplate(
+    template="""You are a senior software engineer fixing a bug.
+
+File: {file_path}
+
+File content:
+{file_content}
+
+Error:
+{error}
+
+Fix suggestion:
+{fix_suggestion}
+
+Find the EXACT problematic code in the file and provide the fix.
+
+Rules:
+- "original" must be copied CHARACTER FOR CHARACTER from the file content
+- "original" must be the minimal snippet that contains the bug
+- "fixed" must be the corrected version
+- Do NOT use "..." to truncate
+- Return ONLY valid JSON
+
+{{
+    "original": "exact code from file",
+    "fixed": "corrected code",
+    "explanation": "what was fixed"
+}}""",
+    input_variables=["file_path", "file_content", "error", "fix_suggestion"]
+)
