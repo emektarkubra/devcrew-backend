@@ -1,40 +1,25 @@
-fastapi                # API yazmak için ana paket
-uvicorn[standard]      # ASGI server (uygulamayı ayağa kaldırır)
-
-sqlalchemy             # ORM (Python ile veritabanı işlemleri yapmak için)
-psycopg2-binary        # PostgreSQL'e bağlanmak için
-
-alembic                # Veritabanı migration aracı (SQLAlchemy modellerine göre database şemasını version’layarak günceller.)
-
-pydantic-settings      # .env ve config yönetimi için
-python-dotenv          # Ortam değişkenlerini okumak için
-
-passlib[bcrypt]        # Şifre hashleme (authentication için)
-
-psycopg2-binary==2.9.10 
-psycopg[binary]==3.2.9 
-
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.35
+psycopg2-binary==2.9.10
+psycopg[binary]==3.2.9
+alembic==1.14.0
+pydantic-settings==2.7.0
+python-dotenv==1.0.1
+passlib[bcrypt]==1.7.4
 email-validator==2.2.0
+python-jose[cryptography]==3.3.0
+httpx==0.28.1
+pydantic==2.10.6
+pgvector==0.3.6
 
+# AI tarafı (UYUMLU SET)
+langchain==0.1.20
+langchain-core==0.1.52
+langchain-community==0.0.38
+langchain-groq==0.1.3
+langgraph==0.0.40
 
-
-
-python-jose[cryptography]
-httpx
-
-
-
-
-langchain
-langgraph
-langchain-community
-
-langchain-tavily
-langchain-google-genai
-pydantic
-
-pgvector
-python-jose
-
-sentence-transformers
-langchain_groq
+# opsiyonel
+torch==2.1.2
+sentence-transformers==3.3.1

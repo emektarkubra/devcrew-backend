@@ -257,3 +257,60 @@ Rules:
 }}""",
     input_variables=["file_path", "file_content", "error", "fix_suggestion"]
 )
+
+
+# ── Test Generator ──────────────────────────────────────────────────────────────
+
+
+TEST_GENERATOR_PROMPT = PromptTemplate(
+    template="""You are a senior software engineer specializing in test-driven development.
+
+File: {target}
+Framework: {framework}
+
+File content:
+{context}
+
+Generate comprehensive tests for this file using {framework}.
+
+Framework-specific rules:
+- If framework is "jest" or "vitest": use describe/it/expect syntax, import with ES modules, use @testing-library/react for React components
+- If framework is "pytest": use def test_* functions, use assert statements, Python syntax only
+- If framework is "unittest": use class TestX(unittest.TestCase), use self.assert* methods
+- If framework is "mocha": use describe/it/assert syntax
+
+Critical rules:
+- ONLY generate tests for the EXACT file shown above
+- Test code must be COMPLETE and RUNNABLE — no placeholder comments
+- Use ACTUAL function names, component names, and variable names from the file content
+- For React/TypeScript files ALWAYS use jest or vitest syntax, NEVER pytest or Python
+- For Python files ALWAYS use pytest or unittest, NEVER JavaScript
+- Each test must have real assertions, not empty bodies
+- Include all necessary imports in the code field
+
+JSON encoding rules (VERY IMPORTANT):
+- The "code" field must be a valid JSON string
+- Use \\n for newlines inside code — do NOT use literal newlines
+- Use \\t for tabs inside code — do NOT use literal tabs
+- Do NOT use unescaped quotes inside string values
+
+
+Return ONLY valid JSON, no markdown, no explanation:
+{{
+    "totalTests": <number>,
+    "coverage": <estimated coverage percentage>,
+    "unitCount": <number>,
+    "edgeCount": <number>,
+    "integrationCount": <number>,
+    "tests": [
+        {{
+            "name": "descriptive test name",
+            "type": "unit | edge | integration",
+            "description": "what this test verifies",
+            "code": "import React from 'react';\\nimport {{ render }} from '@testing-library/react';\\n\\ndescribe('Component', () => {{\\n  it('renders', () => {{\\n    // test\\n  }});\\n}});"
+        }}
+    ]
+}}
+""",
+    input_variables=["target", "framework", "context"]
+)

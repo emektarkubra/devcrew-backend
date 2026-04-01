@@ -107,6 +107,18 @@ class ApplyDebugFixRequest(BaseModel):
     issues: list
     error:  str
 
+class SaveTestsRequest(BaseModel):
+    token:    str
+    tests:    list
+    filename: str
+    framework: str
+
+class SaveTestsRequest(BaseModel):
+    token:    str
+    tests:    list
+    filename: str
+    framework: str
+
 # response
 class FileRef(BaseModel):
     name: str

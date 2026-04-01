@@ -16,8 +16,8 @@ from app.schemas.agents import (
     HistoryRequest, HistoryItemResponse,
     PRReviewRequest, PRHistoryRequest, DebugRequest,
     DebugHistoryRequest, DocumentationRequest,
-    DocumentationHistoryRequest, RepoFilesRequest,
-    TestGeneratorRequest, TestHistoryRequest, ApplyFixesToBranchRequest
+    DocumentationHistoryRequest, RepoFilesRequest, SaveTestsRequest,
+    TestGeneratorRequest, TestHistoryRequest, ApplyFixesToBranchRequest, ApplyDebugFixRequest
 )
 from app.services.agents.pr_review import generate_fixes, pr_review, apply_fixes_to_branch
 from app.models.pr_review_history import PrReviewQueryHistory
@@ -27,7 +27,6 @@ from app.services.repo_service import fetch_all_repo_files
 from app.services.agents.test_generator import generate_tests
 from app.models.test_history import TestHistory
 from app.models.embedding import CodeEmbedding
-from app.schemas.agents import ApplyDebugFixRequest
 
 router = APIRouter(prefix="/agents")
 
@@ -373,6 +372,7 @@ async def test_generator_history(payload: TestHistoryRequest, db: Session = Depe
                 "coverage":  h.coverage,
                 "tests":     h.tests,
                 "framework": h.framework,
+                "mergedCode": h.merged_code,
                 "timeAgo":   h.created_at,
             }
             for h in history
@@ -387,6 +387,35 @@ async def test_generator_history(payload: TestHistoryRequest, db: Session = Depe
             details     = {"repo": repo_full},
         ) from e
 
+
+
+@router.post("/test-generator/save")
+async def save_tests(payload: SaveTestsRequest, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(payload.token)
+    user    = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    try:
+        # combined test code
+        combined = "\n\n".join([
+            f"// {t['name']}\n{t['code']}"
+            for t in payload.tests
+        ])
+        return {
+            "content":  combined,
+            "filename": payload.filename,
+        }
+    except AppError:
+        raise
+    except Exception as e:
+        raise AppError(
+            code        = "SAVE_TESTS_ERROR",
+            message     = "Failed to generate test file.",
+            status_code = 500,
+            details     = {"error": str(e)},
+        ) from e
 
 # documentation
 @router.post("/documentation")
