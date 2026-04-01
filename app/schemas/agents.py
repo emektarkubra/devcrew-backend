@@ -101,12 +101,11 @@ class ApplyDebugFixRequest(BaseModel):
     error:        str
 
 class ApplyDebugFixRequest(BaseModel):
-    token:          str
-    owner:          str
-    repo:           str
-    fix:            str
-    affected_files: list
-    error:          str
+    token:  str
+    owner:  str
+    repo:   str
+    issues: list
+    error:  str
 
 # response
 class FileRef(BaseModel):

@@ -273,7 +273,7 @@ async def debug_history(payload: DebugHistoryRequest, db: Session = Depends(get_
                 "rootCause":     h.root_cause,
                 "severity":      h.severity,
                 "affectedFiles": h.affected_files,
-                "fixSuggestion": h.fix,
+                "issues":        h.issues or [],
                 "explanation":   h.explanation,
                 "resolved":      h.resolved,
                 "timeAgo":       h.created_at,
@@ -302,12 +302,11 @@ async def debug_apply_fix(payload: ApplyDebugFixRequest, db: Session = Depends(g
 
     try:
         return await apply_debug_fix_and_open_pr(
-            access_token   = user.access_token,
-            owner          = payload.owner,
-            repo           = payload.repo,
-            fix_suggestion = payload.fix,
-            affected_files = payload.affected_files,
-            error          = payload.error,
+            access_token = user.access_token,
+            owner        = payload.owner,
+            repo         = payload.repo,
+            issues       = payload.issues,
+            error        = payload.error,
         )
     except AppError:
         raise

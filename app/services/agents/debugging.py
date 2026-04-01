@@ -13,7 +13,6 @@ from app.services.agents.indexer import get_embedding
 from app.models.debug_history import DebugHistory
 from app.services.agents.pr_review import find_and_replace
 
-# LLM
 llm = ChatGroq(
     model_name="llama-3.1-8b-instant",
     temperature=0,
@@ -93,17 +92,19 @@ async def debug_error(
         analysis = json.loads(cleaned)
     except Exception:
         analysis = {
-            "root_cause":     answer,
-            "severity":       "unknown",
-            "affected_files": [],
-            "fix_suggestion": "",
-            "explanation":    "",
+            "root_cause":  answer,
+            "severity":    "unknown",
+            "explanation": "",
+            "issues":      [],
         }
 
-    affected_files = analysis.get("affected_files", [])
+    raw_issues = analysis.get("issues", [])
 
-    files_with_code = []
-    for file_name in affected_files:
+    # affected_file'dan tam path'i bul
+    issues_with_code = []
+    for issue in raw_issues:
+        file_name = issue.get("affected_file", "")
+
         chunk = (
             db.query(CodeEmbedding)
             .filter(
@@ -126,13 +127,22 @@ async def debug_error(
             .all()
         )
         code = "\n".join([c.chunk_text for c in chunks]) if chunks else ""
-        files_with_code.append({
-            "path": full_path,
-            "name": full_path.split("/")[-1],
-            "code": code[:500],
+
+        issues_with_code.append({
+            "title":         issue.get("title", ""),
+            "description":   issue.get("description", ""),
+            "affectedFile":  {"path": full_path, "name": full_path.split("/")[-1], "code": code[:500]},
+            "fixSuggestion": issue.get("fix_suggestion", ""),
         })
 
-    fix = analysis.get("fix_suggestion", "")
+    # affected_files — unique dosyalar
+    seen = set()
+    affected_files = []
+    for issue in issues_with_code:
+        path = issue["affectedFile"]["path"]
+        if path not in seen:
+            seen.add(path)
+            affected_files.append(issue["affectedFile"])
 
     db.add(DebugHistory(
         user_id        = user_id,
@@ -140,18 +150,18 @@ async def debug_error(
         error          = error[:500],
         root_cause     = analysis.get("root_cause", ""),
         severity       = analysis.get("severity", "unknown"),
-        affected_files = files_with_code,
-        fix            = fix,
+        affected_files = affected_files,
+        issues         = issues_with_code,
         explanation    = analysis.get("explanation", ""),
     ))
     db.commit()
 
     return {
-        "rootCause":     analysis.get("root_cause",     ""),
-        "severity":      analysis.get("severity",       "unknown"),
-        "affectedFiles": files_with_code,
-        "fixSuggestion": fix,
-        "explanation":   analysis.get("explanation",    ""),
+        "rootCause":     analysis.get("root_cause",  ""),
+        "severity":      analysis.get("severity",    "unknown"),
+        "explanation":   analysis.get("explanation", ""),
+        "affectedFiles": affected_files,
+        "issues":        issues_with_code,
         "contextFiles":  list({r.file_path for r in results}),
     }
 
@@ -160,12 +170,10 @@ async def apply_debug_fix_and_open_pr(
     access_token:   str,
     owner:          str,
     repo:           str,
-    fix_suggestion: str,
-    affected_files: list,
+    issues:         list,
     error:          str,
 ) -> dict:
 
-    # default branch
     async with httpx.AsyncClient(timeout=30.0) as client:
         repo_resp = await client.get(
             f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}",
@@ -183,7 +191,6 @@ async def apply_debug_fix_and_open_pr(
 
     default_branch = repo_resp.json().get("default_branch", "main")
 
-    # default branch sha'sını al
     async with httpx.AsyncClient(timeout=30.0) as client:
         ref_resp = await client.get(
             f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}/git/ref/heads/{default_branch}",
@@ -203,7 +210,6 @@ async def apply_debug_fix_and_open_pr(
     timestamp  = datetime.now().strftime("%Y%m%d%H%M%S")
     new_branch = f"devCrew/fix-{timestamp}"
 
-    # create new branch from default
     async with httpx.AsyncClient(timeout=30.0) as client:
         branch_resp = await client.post(
             f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}/git/refs",
@@ -226,12 +232,15 @@ async def apply_debug_fix_and_open_pr(
     applied = []
     failed  = []
 
-    for file_info in affected_files:
-        file_path = file_info.get("path", "")
+    for issue in issues:
+        file_info      = issue.get("affectedFile", {})
+        file_path      = file_info.get("path", "")
+        fix_suggestion = issue.get("fixSuggestion", "")
+
         if not file_path:
+            failed.append({"file": file_path, "reason": "No file path"})
             continue
 
-        # take file content from GitHub
         async with httpx.AsyncClient(timeout=30.0) as client:
             file_resp = await client.get(
                 f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}/contents/{file_path}",
@@ -249,7 +258,6 @@ async def apply_debug_fix_and_open_pr(
         file_sha        = file_data["sha"]
         current_content = base64.b64decode(file_data["content"]).decode("utf-8")
 
-        # generate fix for file
         try:
             raw     = fix_chain.invoke({
                 "file_path":      file_path,
@@ -268,12 +276,6 @@ async def apply_debug_fix_and_open_pr(
         if not original:
             failed.append({"file": file_path, "reason": "No original code generated"})
             continue
-        print(f"=== DEBUG FIX ===")
-        print(f"original: {repr(original[:200])}")
-        print(f"in content: {original[:50] in current_content}")
-
-        print(f"original repr: {repr(original[:100])}")
-        print(f"content snippet: {repr(current_content[400:600])}")
 
         new_content = find_and_replace(current_content, original, fixed)
 
@@ -283,7 +285,6 @@ async def apply_debug_fix_and_open_pr(
 
         encoded = base64.b64encode(new_content.encode("utf-8")).decode("utf-8")
 
-        # commit fix to new branch
         async with httpx.AsyncClient(timeout=30.0) as client:
             update_resp = await client.put(
                 f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}/contents/{file_path}",
@@ -292,7 +293,7 @@ async def apply_debug_fix_and_open_pr(
                     "Accept":        "application/vnd.github.v3+json",
                 },
                 json={
-                    "message": f"fix: {error[:80]} (DevCrew Debug Agent)",
+                    "message": f"fix: {issue.get('title', file_path)} (DevCrew Debug Agent)",
                     "content": encoded,
                     "sha":     file_sha,
                     "branch":  new_branch,
@@ -314,7 +315,8 @@ async def apply_debug_fix_and_open_pr(
             details     = {"failed": failed},
         )
 
-    # open PR
+    issue_summary = "\n".join([f"- {i.get('title', '')}: {i.get('fixSuggestion', '')}" for i in issues])
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         pr_resp = await client.post(
             f"{settings.GITHUB_API_URL}/repos/{owner}/{repo}/pulls",
@@ -324,7 +326,7 @@ async def apply_debug_fix_and_open_pr(
             },
             json={
                 "title": f"fix: {error[:80]}",
-                "body":  f"## DevCrew Debug Agent\n\n**Error:**\n```\n{error[:500]}\n```\n\n**Fix applied:**\n{fix_suggestion}\n\n**Files changed:** {', '.join(applied)}",
+                "body":  f"## DevCrew Debug Agent\n\n**Error:**\n```\n{error[:500]}\n```\n\n**Fixes applied:**\n{issue_summary}\n\n**Files changed:** {', '.join(applied)}",
                 "head":  new_branch,
                 "base":  default_branch,
             },

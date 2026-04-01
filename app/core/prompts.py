@@ -201,19 +201,26 @@ Related Code Context (retrieved from the actual repository):
 Analysis rules:
 - Base your analysis ONLY on the error message and the code context provided
 - Do NOT invent file names, function names, or line numbers that are not in the context
-- If the context does not contain enough information, say so in the explanation
-- "affected_files" must ONLY contain files that appear in the code context above
-- "severity" must reflect the actual impact: critical (app crash/data loss), high (feature broken), medium (degraded behavior), low (minor issue)
-- "fix_suggestion" must be concrete — include actual code snippets when possible, referencing real function/variable names from the context
+- "affected_files" in each issue must ONLY contain files visible in the code context
+- "severity" must reflect actual impact: critical (app crash/data loss), high (feature broken), medium (degraded behavior), low (minor issue)
+- "fix_suggestion" must be concrete with actual code snippets from the context
 - Do NOT hallucinate fixes for code you cannot see
+- If there are multiple distinct bugs, report each as a separate issue
+- If there is only one bug, return a single issue
 
 Return ONLY valid JSON, no markdown, no explanation:
 {{
-    "root_cause": "one sentence explaining the exact cause based on the error and code",
+    "root_cause": "one sentence summarizing the main error",
     "severity": "critical | high | medium | low",
-    "affected_files": ["only files visible in the code context"],
-    "fix_suggestion": "concrete fix with code example using actual variable/function names from context",
-    "explanation": "2-3 sentences explaining what went wrong, why, and what the fix does"
+    "explanation": "2-3 sentences explaining what went wrong and why",
+    "issues": [
+        {{
+            "title": "concise issue title",
+            "description": "clear explanation of this specific bug",
+            "affected_file": "filename only (e.g. App.tsx)",
+            "fix_suggestion": "concrete fix with code example"
+        }}
+    ]
 }}
 """,
     input_variables=["error", "context"]
