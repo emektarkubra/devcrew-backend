@@ -75,7 +75,7 @@ async def github_callback(code: str, db: Session = Depends(get_db)):
             print(f"⚠️ sync_user_repos failed: {e}")
             # login'i engelleme, devam et
 
-        return RedirectResponse(f"{settings.FRONTEND_URL}/overview?token={jwt_token}")
+        return RedirectResponse(f"{settings.FRONTEND_URL}?token={jwt_token}")
     except AppError:
         raise
     except Exception as e:

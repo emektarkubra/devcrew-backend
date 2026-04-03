@@ -1,7 +1,9 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Any
 
+
+# ─── Request Models ───────────────────────────────────────────────────────────
 
 class IndexRequest(BaseModel):
     token: str
@@ -35,7 +37,6 @@ class PRListRequest(BaseModel):
     owner: str
     repo:  str
 
-
 class DebugRequest(BaseModel):
     token: str
     owner: str
@@ -48,11 +49,11 @@ class DebugHistoryRequest(BaseModel):
     repo:  str
 
 class DocumentationRequest(BaseModel):
-    token: str
-    owner: str
-    repo:  str
-    target: str  
-    doc_type: str 
+    token:    str
+    owner:    str
+    repo:     str
+    target:   str
+    doc_type: str
 
 class DocumentationHistoryRequest(BaseModel):
     token: str
@@ -63,7 +64,6 @@ class RepoFilesRequest(BaseModel):
     token: str
     owner: str
     repo:  str
-
 
 class TestGeneratorRequest(BaseModel):
     token:     str
@@ -91,15 +91,6 @@ class ApplyFixesToBranchRequest(BaseModel):
     pr_number: int
     fixes:     list
 
-
-class ApplyDebugFixRequest(BaseModel):
-    token:        str
-    owner:        str
-    repo:         str
-    fix:          str
-    affected_files: list
-    error:        str
-
 class ApplyDebugFixRequest(BaseModel):
     token:  str
     owner:  str
@@ -108,21 +99,13 @@ class ApplyDebugFixRequest(BaseModel):
     error:  str
 
 class SaveTestsRequest(BaseModel):
-    token:    str
-    tests:    list
-    filename: str
+    token:     str
+    tests:     list
+    filename:  str
     framework: str
 
-class SaveTestsRequest(BaseModel):
-    token:    str
-    tests:    list
-    filename: str
-    framework: str
 
-# response
-class FileRef(BaseModel):
-    name: str
-    path: str
+# ─── Response Models ──────────────────────────────────────────────────────────
 
 class IndexResponse(BaseModel):
     status:        str
@@ -131,8 +114,8 @@ class IndexResponse(BaseModel):
     total_chunks:  int
 
 class QAResponse(BaseModel):
-    answer: str
-    files:  List[str]
+    answer:      str
+    files:       List[str]
     suggestions: List[str] = []
 
 class HistoryItemResponse(BaseModel):
@@ -144,3 +127,116 @@ class HistoryItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class CheckIndexResponse(BaseModel):
+    indexed:    bool
+    file_count: int
+
+class PRReviewResponse(BaseModel):
+    pr:           str
+    title:        str
+    riskScore:    int
+    issueCount:   int
+    issues:       List[Any] = []
+    diff:         Optional[str] = None
+    files:        List[str] = []
+    summary:      Optional[str] = None
+    changedFiles: int = 0
+
+class PRHistoryItemResponse(BaseModel):
+    pr:           str
+    title:        Optional[str] = None
+    riskScore:    Optional[int] = None
+    issueCount:   Optional[int] = None
+    issues:       List[Any] = []
+    diff:         Optional[str] = None
+    files:        List[str] = []
+    summary:      Optional[str] = None
+    changedFiles: int = 0
+    timeAgo:      datetime
+
+    class Config:
+        from_attributes = True
+
+class DebugResponse(BaseModel):
+    error:         str
+    rootCause:     Optional[str] = None
+    severity:      Optional[str] = None
+    affectedFiles: List[str] = []
+    issues:        List[Any] = []
+    explanation:   Optional[str] = None
+    resolved:      Optional[bool] = None
+
+class DebugHistoryItemResponse(BaseModel):
+    error:         str
+    rootCause:     Optional[str] = None
+    severity:      Optional[str] = None
+    affectedFiles: List[str] = []
+    issues:        List[Any] = []
+    explanation:   Optional[str] = None
+    resolved:      Optional[bool] = None
+    timeAgo:       datetime
+
+    class Config:
+        from_attributes = True
+
+class DebugApplyFixResponse(BaseModel):
+    pr_url:  Optional[str] = None
+    branch:  Optional[str] = None
+    message: Optional[str] = None
+
+class TestItem(BaseModel):
+    name: str
+    code: str
+
+class TestGeneratorResponse(BaseModel):
+    target:     str
+    testCount:  int
+    coverage:   Optional[str] = None
+    tests:      List[Any] = []
+    framework:  str
+    mergedCode: Optional[str] = None
+
+class TestHistoryItemResponse(BaseModel):
+    target:     str
+    testCount:  int
+    coverage:   Optional[str] = None
+    tests:      List[Any] = []
+    framework:  str
+    mergedCode: Optional[str] = None
+    timeAgo:    datetime
+
+    class Config:
+        from_attributes = True
+
+class SaveTestsResponse(BaseModel):
+    content:  str
+    filename: str
+
+class DocumentationResponse(BaseModel):
+    fileName:     str
+    description:  str
+    markdown:     str
+    contextFiles: List[str] = []
+
+class DocumentationHistoryItemResponse(BaseModel):
+    target:      str
+    docType:     str
+    description: str
+    content:     str
+    timeAgo:     datetime
+
+    class Config:
+        from_attributes = True
+
+class RepoFilesResponse(BaseModel):
+    files: List[str]
+
+class ApplyFixesResponse(BaseModel):
+    fixes: List[Any] = []
+
+class ApplyFixesToBranchResponse(BaseModel):
+    message:      Optional[str] = None
+    branch:       Optional[str] = None
+    committed:    Optional[int] = None
+    skipped:      Optional[int] = None
