@@ -32,7 +32,7 @@ SUPPORTED_EXTENSIONS = (
     # Jupyter
     ".ipynb",
     # Web
-    ".html", ".css", ".scss", ".sass", ".less",
+    ".html",
     # Config / Infra
     ".yaml", ".yml", ".json", ".toml", ".ini", ".env",
     # Dockerfile

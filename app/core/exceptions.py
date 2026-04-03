@@ -5,25 +5,15 @@ from fastapi import status
 
 
 @dataclass
-class ErrorMeta:  # hata oldugunda bunlar doner
-    """Serializable metadata carried by domain exceptions."""
+class ErrorMeta:
     code: str
     message: str
     status_code: int
     details: Optional[Dict[str, Any]] = None
-    safe_message: Optional[str] = None  # what client sees if you want to hide internals
+    safe_message: Optional[str] = None
 
 
-class AppError(Exception): # tüm domain/app hataları
-    """
-    Base application/domain error.
-    - code: stable error code for frontend/clients
-    - message: internal message (can be same as safe_message)
-    - safe_message: optional client-safe message (for 5xx, security)
-    - details: structured context for debugging/observability
-    - status_code: default HTTP status mapping
-    """
-
+class AppError(Exception):
     meta: ErrorMeta
 
     def __init__(
@@ -44,7 +34,7 @@ class AppError(Exception): # tüm domain/app hataları
         )
         super().__init__(message)
 
-    @property  # self.meta.xxx erişimini kolaylaştırıyor: yani handler yazarken exc.meta.code yerine exc.code diyebiliyorsun.
+    @property
     def code(self) -> str:
         return self.meta.code
 
@@ -65,166 +55,175 @@ class AppError(Exception): # tüm domain/app hataları
         return self.meta.safe_message or self.meta.message
 
 
-# ---- Error Category Bases (optional but useful) ----
+# ---- Error Category Bases ----
 
-class ValidationAppError(AppError): # 400
-    def __init__(
-        self, 
-        code: str, 
-        message: str, 
-        *, 
-        details: Optional[Dict[str, Any]] = None
-    ):
+class ValidationAppError(AppError):
+    def __init__(self, code: str, message: str, *, details: Optional[Dict[str, Any]] = None):
         super().__init__(code, message, status_code=status.HTTP_400_BAD_REQUEST, details=details)
 
 
-class NotFoundAppError(AppError): # 404
-    def __init__(
-        self, 
-        code: str, 
-        message: str, 
-        *, 
-        details: Optional[Dict[str, Any]] = None
-    ):
+class NotFoundAppError(AppError):
+    def __init__(self, code: str, message: str, *, details: Optional[Dict[str, Any]] = None):
         super().__init__(code, message, status_code=status.HTTP_404_NOT_FOUND, details=details)
 
 
-class ConflictAppError(AppError): # 409
-    def __init__(
-        self, 
-        code: str, 
-        message: str, 
-        *, 
-        details: Optional[Dict[str, Any]] = None
-    ):
+class ConflictAppError(AppError):
+    def __init__(self, code: str, message: str, *, details: Optional[Dict[str, Any]] = None):
         super().__init__(code, message, status_code=status.HTTP_409_CONFLICT, details=details)
 
 
-class AuthAppError(AppError): # 401
-    def __init__(
-        self, 
-        code: str, 
-        message: str, 
-        *, 
-        details: Optional[Dict[str, Any]] = None
-    ):
+class AuthAppError(AppError):
+    def __init__(self, code: str, message: str, *, details: Optional[Dict[str, Any]] = None):
         super().__init__(code, message, status_code=status.HTTP_401_UNAUTHORIZED, details=details)
 
 
-class ForbiddenAppError(AppError): # 403
-    def __init__(
-        self, 
-        code: str, 
-        message: str, 
-        *, 
-        details: Optional[Dict[str, Any]] = None
-    ):
+class ForbiddenAppError(AppError):
+    def __init__(self, code: str, message: str, *, details: Optional[Dict[str, Any]] = None):
         super().__init__(code, message, status_code=status.HTTP_403_FORBIDDEN, details=details)
 
 
-class RateLimitAppError(AppError): # 429
-    def __init__(
-        self, 
-        code: str, 
-        message: str, 
-        *, 
-        details: Optional[Dict[str, Any]] = None
-    ):
+class RateLimitAppError(AppError):
+    def __init__(self, code: str, message: str, *, details: Optional[Dict[str, Any]] = None):
         super().__init__(code, message, status_code=status.HTTP_429_TOO_MANY_REQUESTS, details=details)
 
 
-class ServiceUnavailableAppError(AppError): # 503
-    def __init__(
-        self, 
-        code: str, 
-        message: str, 
-        *, 
-        details: Optional[Dict[str, Any]] = None
-    ):
+class ServiceUnavailableAppError(AppError):
+    def __init__(self, code: str, message: str, *, details: Optional[Dict[str, Any]] = None):
         super().__init__(code, message, status_code=status.HTTP_503_SERVICE_UNAVAILABLE, details=details)
 
 
-# ---- Concrete Examples (use these in services) ----
+# ---- Concrete Errors ----
 
 class EmailAlreadyExistsError(ConflictAppError):
     def __init__(self, *, email: Optional[str] = None):
         super().__init__(
-            code="EMAIL_ALREADY_EXISTS",
-            message="Email already exists",
-            details={"email": email} if email else None,
+            code    = "EMAIL_ALREADY_EXISTS",
+            message = "Email already exists.",
+            details = {"email": email} if email else None,
         )
 
 
 class UserNotFoundError(NotFoundAppError):
     def __init__(self, *, user_id: Optional[int] = None):
         super().__init__(
-            code="USER_NOT_FOUND",
-            message="User not found",
-            details={"user_id": user_id} if user_id is not None else None,
+            code    = "USER_NOT_FOUND",
+            message = "User not found.",
+            details = {"user_id": user_id} if user_id is not None else None,
         )
 
-# Agents
 
 class RepoNotIndexedError(NotFoundAppError):
     def __init__(self, *, repo: Optional[str] = None):
         super().__init__(
-            code="REPO_NOT_INDEXED",
-            message="Bu repo henüz indexlenmemiş.",
-            details={"repo": repo} if repo else None,
+            code    = "REPO_NOT_INDEXED",
+            message = "Repository has not been indexed yet.",
+            details = {"repo": repo} if repo else None,
         )
+
 
 class RepoIndexError(AppError):
-    def __init__(self, *, repo: Optional[str] = None):
+    def __init__(self, *, repo: Optional[str] = None, reason: Optional[str] = None):
         super().__init__(
-            code="REPO_INDEX_ERROR",
-            message="Repo indexlenirken hata oluştu.",
-            status_code=500,
-            details={"repo": repo} if repo else None,
+            code        = "REPO_INDEX_ERROR",
+            message     = "Repository indexing failed.",
+            status_code = 500,
+            details     = {
+                **({"repo": repo} if repo else {}),
+                **({"reason": reason} if reason else {}),
+            } or None,
         )
 
+
 class EmbeddingError(AppError):
-    def __init__(self, *, file_path: Optional[str] = None):
+    def __init__(self, *, file_path: Optional[str] = None, reason: Optional[str] = None):
         super().__init__(
-            code="EMBEDDING_ERROR",
-            message="Embedding oluşturulurken hata oluştu.",
-            status_code=500,
-            details={"file_path": file_path} if file_path else None,
+            code        = "EMBEDDING_ERROR",
+            message     = "Embedding generation failed.",
+            status_code = 500,
+            details     = {
+                **({"file_path": file_path} if file_path else {}),
+                **({"reason": reason} if reason else {}),
+            } or None,
         )
+
 
 class PRNotFoundError(NotFoundAppError):
     def __init__(self, *, pr_number: Optional[int] = None):
         super().__init__(
-            code="PR_NOT_FOUND",
-            message="PR bulunamadı.",
-            details={"pr_number": pr_number} if pr_number else None,
+            code    = "PR_NOT_FOUND",
+            message = "Pull request not found.",
+            details = {"pr_number": pr_number} if pr_number else None,
         )
+
 
 class FileNotFoundInRepoError(NotFoundAppError):
     def __init__(self, *, file_path: Optional[str] = None, repo: Optional[str] = None):
         super().__init__(
-            code="FILE_NOT_FOUND_IN_REPO",
-            message="File not found in repository.",
-            details={
-                "file_path": file_path,
-                "repo": repo,
-            },
+            code    = "FILE_NOT_FOUND_IN_REPO",
+            message = "File not found in repository.",
+            details = {
+                **({"file_path": file_path} if file_path else {}),
+                **({"repo": repo} if repo else {}),
+            } or None,
         )
 
+
 class GitHubAPIError(AppError):
-    def __init__(self, *, status_code: int = 500, repo: Optional[str] = None):
+    def __init__(
+        self,
+        *,
+        status_code: int = 500,
+        repo: Optional[str] = None,
+        reason: Optional[str] = None,
+    ):
         super().__init__(
-            code="GITHUB_API_ERROR",
-            message="GitHub API returned an error.",
-            status_code=status_code,
-            details={"repo": repo} if repo else None,
+            code        = "GITHUB_API_ERROR",
+            message     = "GitHub API error.",
+            status_code = status_code,
+            details     = {
+                **({"repo": repo} if repo else {}),
+                **({"reason": reason} if reason else {}),
+            } or None,
         )
 
 
 class DocumentationGenerationError(AppError):
-    def __init__(self, *, target: Optional[str] = None):
+    def __init__(
+        self,
+        *,
+        target:    Optional[str]       = None,
+        http_code: Optional[int]       = None,
+        details:   Optional[Dict[str, Any]] = None,
+    ):
+        computed_details = details or ({"target": target} if target else None)
         super().__init__(
-            code="DOCUMENTATION_GENERATION_ERROR",
-            message="Documentation generation failed.",
-            status_code=500,
-            details={"target": target} if target else None,
+            code        = "DOCUMENTATION_GENERATION_ERROR",
+            message     = "Documentation generation failed.",
+            status_code = 500,
+            details     = computed_details,
+        )
+        self.http_code = http_code
+
+class AIRateLimitError(RateLimitAppError):
+    def __init__(self, *, owner: Optional[str] = None, repo: Optional[str] = None):
+        super().__init__(
+            code    = "RATE_LIMIT_ERROR",
+            message = "AI model daily token limit reached. Please try again in a few minutes.",
+            details = {
+                **({"owner": owner} if owner else {}),
+                **({"repo": repo} if repo else {}),
+            } or None,
+        )
+
+
+class FileContextError(AppError):
+    def __init__(self, *, file_path: Optional[str] = None, reason: Optional[str] = None):
+        super().__init__(
+            code        = "FILE_CONTEXT_ERROR",
+            message     = "Could not fetch file for documentation context.",
+            status_code = 500,
+            details     = {
+                **({"file_path": file_path} if file_path else {}),
+                **({"reason": reason} if reason else {}),
+            } or None,
         )

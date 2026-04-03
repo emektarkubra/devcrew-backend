@@ -257,3 +257,502 @@ Rules:
 }}""",
     input_variables=["file_path", "file_content", "error", "fix_suggestion"]
 )
+
+
+# ── Test Generator ──────────────────────────────────────────────────────────────
+
+TEST_GENERATOR_PROMPT = PromptTemplate(
+    template="""You are a senior software engineer specializing in test-driven development.
+
+File: {target}
+Framework: {framework}
+
+File content:
+{context}
+
+Generate comprehensive tests for this file using {framework}.
+
+Framework-specific rules:
+- If framework is "jest" or "vitest": use describe/it/expect syntax, import with ES modules, use @testing-library/react for React components
+- If framework is "pytest": use def test_* functions, use assert statements, Python syntax only
+- If framework is "unittest": use class TestX(unittest.TestCase), use self.assert* methods
+- If framework is "mocha": use describe/it/assert syntax
+
+Critical rules:
+- ONLY generate tests for the EXACT file shown above
+- Test code must be COMPLETE and RUNNABLE — no placeholder comments
+- Use ACTUAL function names, component names, and variable names from the file content
+- For React/TypeScript files ALWAYS use jest or vitest syntax, NEVER pytest or Python
+- For Python files ALWAYS use pytest or unittest, NEVER JavaScript
+- Each test must have real assertions, not empty bodies
+- Include all necessary imports in the code field
+
+JSON encoding rules (VERY IMPORTANT):
+- The "code" field must be a valid JSON string
+- Use \\n for newlines inside code — do NOT use literal newlines
+- Use \\t for tabs inside code — do NOT use literal tabs
+- Do NOT use unescaped quotes inside string values
+
+Return ONLY valid JSON, no markdown, no explanation:
+{{
+    "totalTests": <number>,
+    "coverage": <estimated coverage percentage>,
+    "unitCount": <number>,
+    "edgeCount": <number>,
+    "integrationCount": <number>,
+    "tests": [
+        {{
+            "name": "descriptive test name",
+            "type": "unit | edge | integration",
+            "description": "what this test verifies",
+            "code": "import React from 'react';\\nimport {{ render }} from '@testing-library/react';\\n\\ndescribe('Component', () => {{\\n  it('renders', () => {{\\n    // test\\n  }});\\n}});"
+        }}
+    ]
+}}
+""",
+    input_variables=["target", "framework", "context"]
+)
+
+
+# ── Documentation ──────────────────────────────────────────────────────────────
+
+HALLUCINATION_GUARD = """
+CRITICAL ANTI-HALLUCINATION RULES:
+
+- ONLY use information explicitly present in the provided code
+- NEVER invent endpoints, fields, schemas, or behaviors
+- NEVER assume standard patterns (REST, CRUD, auth, etc.)
+- If something is missing, OMIT it completely (do NOT guess)
+
+STRICT OUTPUT RULES:
+- DO NOT repeat the same endpoint or section
+- EACH endpoint must appear EXACTLY ONCE
+- If duplicates are detected, MERGE them into one
+
+FORBIDDEN:
+- "Not determinable from provided context"
+- Placeholder text
+- Repeated sections
+- Guessing request/response bodies
+
+INFERENCE RULE:
+- If endpoint structure is visible but partial, infer minimally from code
+- If still unclear → OMIT that part
+
+QUALITY BAR:
+- Output must be concise, non-repetitive, and structured
+- Prefer missing info over incorrect info
+"""
+
+DOC_PROMPT = PromptTemplate(
+    input_variables=["context", "target", "task", "guard"],
+    template="""You are a senior software engineer writing documentation.
+
+{guard}
+
+## Code Context
+{context}
+
+## Target
+{target}
+
+## Task
+{task}
+
+Generate the documentation now:"""
+)
+
+TASK_PROMPT = {
+
+    "function": """Generate detailed technical documentation for each function and class found in this file.
+
+For EACH function/method/class write:
+
+### `functionName(params) → returnType`
+**Purpose:** What this function does and why it exists.
+**Parameters:**
+- `paramName` (type): description
+**Returns:** type — description
+**Example:**
+```
+// minimal usage example based on actual code
+```
+**Notes:** Edge cases, exceptions, or important behavior.
+
+PROJECT-AGNOSTIC RULES:
+- Only document what is actually in the file
+- Use the actual parameter names and types from the code
+- Include ALL exported functions, classes, and methods
+- If a function has no parameters or return value, say so explicitly
+- Do NOT invent usage examples — base them on the actual code""",
+
+
+    "readme": """Generate a professional, complete README.md for this repository.
+
+Structure EXACTLY like this:
+
+# [Actual Project Name from code]
+
+> [One-line description based on what the code actually does]
+
+## Features
+List only features that are actually implemented in the code.
+
+## Tech Stack
+| Layer | Technology |
+|-------|-----------|
+Only include technologies actually used in the code/config files.
+
+## Prerequisites
+Only list what is actually required based on package.json, requirements.txt, or similar files.
+
+## Installation
+```bash
+# Commands based on actual project setup
+```
+
+## Environment Variables
+```env
+# Only variables actually found in the code or config files
+VARIABLE_NAME=description
+```
+
+## Project Structure
+```
+# Based on actual files visible in the context
+```
+
+## Usage
+```bash
+# Actual commands to run the project
+```
+
+PROJECT-AGNOSTIC RULES:
+- Do NOT invent features — list only what the code actually implements
+- Do NOT guess environment variables — only include ones visible in config files
+- Do NOT assume a standard folder structure — use only what is in the file list
+- Do NOT add sections you cannot fill from the code
+- AUTHENTICATION: Do NOT assume Keycloak, Auth0, Firebase, or any specific auth provider — read the actual auth implementation from the code. If it uses GitHub OAuth, say GitHub OAuth. If it uses a form login, say that.
+- ENVIRONMENT VARIABLES: Only include variables that are literally visible in .env.example, config files, or referenced in the code. Do NOT invent them.""",
+
+
+    "api": """Generate complete API reference documentation.
+
+Structure EXACTLY like this:
+
+# API Reference
+
+## Base URL
+```
+# Based on actual server config found in the code
+```
+
+## Authentication
+Describe ONLY the authentication method actually implemented in the code.
+
+---
+
+## Endpoints
+
+For EACH endpoint actually found in the routes/controllers:
+
+### `METHOD /actual-path`
+**Description:** What this endpoint does based on the code.
+
+**Request Headers:**
+| Header | Required | Description |
+Only include headers actually used in the code.
+
+**Request Body:**
+```json
+// Only actual fields from the real request schema
+```
+
+**Response (200):**
+```json
+// Only actual fields from the real response
+```
+
+**Error Responses:**
+Only errors that are actually handled in the code.
+
+**Example:**
+```bash
+# Real example based on actual endpoint
+```
+
+---
+
+PROJECT-AGNOSTIC RULES:
+- Do NOT invent endpoints — only document routes visible in the code
+- Do NOT assume request/response shapes — use only actual models/schemas found
+- Do NOT guess status codes — only include ones explicitly returned
+
+CRITICAL PATH RULES:
+- FastAPI: combine include_router prefix + route decorator path for full endpoint path
+  Example: include_router(agents, prefix="/agents") + @router.post("/index") = POST /agents/index
+- Spring: combine @RequestMapping on class + @GetMapping on method
+- Express: combine app.use("/api") + router.get("/users") = GET /api/users
+- NEVER omit the prefix — always combine prefix + route path
+
+CRITICAL RESPONSE MODEL RULES:
+- Response models are defined in schema/dto/types files provided in the context
+- For each endpoint find its response_model in the route decorator or function signature
+- Then look up that response model class in the schema files
+- Use ALL fields of that class to document the Response (200) section
+- FastAPI example:
+    Route:   @router.post("/index", response_model=IndexResponse)
+    Schema:  class IndexResponse(BaseModel):
+                status: str
+                repo: str
+                files_indexed: int
+                total_chunks: int
+    Output:  {"status": "string", "repo": "string", "files_indexed": 0, "total_chunks": 0}
+- Spring example:
+    Route:   @GetMapping("/users") public ResponseEntity<UserDto> getUser()
+    Schema:  public class UserDto { String name; String email; }
+    Output:  {"name": "string", "email": "string"}
+- NEVER write "No response model found" if a schema file is present in the context
+- If response_model is List[X] wrap the output in an array: [{ ...X fields... }]
+
+CRITICAL REQUEST SCHEMA RULES:
+- Request schemas are defined in schema/dto/types files
+- For each endpoint find its request body type (Pydantic model, DTO class, interface)
+- Use ALL fields of that class for the Request Body section
+- FastAPI example:
+    Route:  async def index(payload: IndexRequest)
+    Schema: class IndexRequest(BaseModel):
+                token: str
+                owner: str
+                repo: str
+    Output: {"token": "string", "owner": "string", "repo": "string"}
+
+FORMATTING RULES:
+- If a section cannot be filled from the code, write: None
+- If no endpoints are found write ONLY: "No endpoint definitions found in the provided context."
+- Do NOT repeat yourself
+- Write each section ONCE and move on
+- Never repeat content
+- Never add apologies, explanations or future promises""",
+
+
+    "onboard": """Generate a developer onboarding guide for someone joining this project for the first time.
+
+Structure EXACTLY like this:
+
+# Developer Onboarding Guide
+
+## Welcome
+What this project does based on the actual code.
+
+## Tech Stack
+Only technologies actually used, with brief explanation of why each one is used (based on how it appears in the code).
+
+## Prerequisites
+Only what is actually required, with real version numbers from config files.
+
+## Local Setup
+```bash
+# Every actual command needed to get it running
+# Based on real package.json scripts, Makefile, docker-compose, etc.
+```
+
+## Project Structure
+```
+# Actual folder structure from the code
+folder/   # what this folder actually contains
+```
+
+## Architecture Overview
+How the actual components in the code connect and communicate.
+
+## Key Concepts
+The most important concepts based on what is actually in the codebase.
+
+## Common Development Tasks
+Based on actual scripts and workflows visible in the code.
+
+## Environment Variables
+Every env variable actually found in the code, what it does, and how to get it.
+
+## Gotchas & Known Issues
+Only real issues visible in the code (TODOs, known limitations, unusual patterns).
+
+PROJECT-AGNOSTIC RULES:
+- Be extremely specific — use actual file names, commands, and config values from the code
+- Do NOT add generic advice not supported by the code
+- Do NOT invent setup steps — only include what is visible in config/script files
+- If a section cannot be filled from the code, write "Not applicable for this project"
+- AUTHENTICATION: Do NOT assume any auth provider — read the actual implementation from the code""",
+
+
+    "guide": """Create a USER GUIDE for END USERS of this application (not developers).
+Analyze the frontend code (React components, pages, routes) and describe what the user SEES and DOES.
+
+Structure EXACTLY like this:
+
+# [Application Name from code] User Guide
+
+## Overview
+What this application actually does based on the code, and who it is for.
+
+---
+
+## Getting Started
+
+### Logging In
+Describe ONLY the actual login/auth flow visible in the code.
+If it uses GitHub OAuth, describe that. If it uses a form, describe that. Do NOT assume.
+
+---
+
+## Pages & Screens
+
+For EACH actual page/screen/route found in the code:
+
+### [Actual Page Name from code]
+**What you see:** Describe every visible UI element actually in this component.
+**What you can do:**
+- **[Actual button/element label from code]:** Exactly what happens
+- **[Actual form field from code]:** What to enter
+- **[Actual dropdown from code]:** Every real option available
+
+---
+
+## Step-by-Step Workflows
+
+For EACH major feature actually implemented in the code:
+
+### How to [Actual Feature Name]
+1. Go to [actual page name]
+2. Click [exact button label from code]
+3. Fill in [exact field name] with [actual expected value]
+4. Click [action button label]
+5. You will see [actual result based on code]
+
+---
+
+## Tips & Notes
+Only practical tips based on actual application behavior visible in the code.
+
+PROJECT-AGNOSTIC RULES:
+- Do NOT assume the app has specific pages unless you see them in the code
+- Do NOT assume login uses username/password — check the actual auth implementation
+- Do NOT mention features not visible in the provided files
+- NEVER mention code, components, functions, props, or file names
+- Use plain language only: "Click the Generate button" not "invoke the handler"
+- If frontend files are not in the context, write: "Frontend code not available in the provided context" """,
+
+
+    "arch": """Generate a comprehensive architecture document for this system.
+
+Structure EXACTLY like this:
+
+# Architecture Document
+
+## System Overview
+What the system actually does based on the code.
+
+## High-Level Architecture
+Describe the actual components found in the code and how they connect.
+Use ASCII diagram only if you can draw it accurately from the code:
+```
+[Actual Component A] → [Actual Component B]
+```
+
+## Components
+
+For EACH actual major component/service/module found in the code:
+
+### [Actual Component Name]
+**Responsibility:** What it actually does based on the code.
+**Technology:** What it actually uses.
+**Interfaces:** How it actually communicates with other components.
+**Key files:** The actual important files in this component.
+
+## Data Flow
+Trace the actual data flow through the system based on real function calls and imports.
+
+## Database Schema
+Only actual tables/models found in the code.
+
+## Key Design Decisions
+Only decisions that are visible and evident in the actual code.
+
+## External Dependencies
+Only actual third-party services and libraries used in the code.
+
+## Scalability & Performance
+Only observations based on actual code patterns visible in the context.
+
+PROJECT-AGNOSTIC RULES:
+- Do NOT draw components that are not in the code context
+- Do NOT invent data flows — trace only what is visible in imports and function calls
+- Do NOT assume a database schema — only describe models actually found in the code
+- If a section cannot be supported by the code, write "Not determinable from provided context" """,
+
+
+    "changelog": """Generate a structured changelog based on the code changes visible in this repository.
+
+Structure EXACTLY like this:
+
+# Changelog
+
+## [Unreleased]
+
+### Breaking Changes
+Only if actual breaking changes are visible in the code.
+
+### New Features
+Only features that are actually implemented and visible in the code.
+- Feature description (actual file affected)
+
+### Bug Fixes
+Only fixes that are actually visible in the code.
+- Fix description (actual file affected)
+
+### Performance Improvements
+Only if actual performance changes are visible.
+
+### Internal Changes
+Only actual refactors, dependency updates, or config changes visible in the code.
+
+### Documentation
+Only actual documentation changes visible in the code.
+
+---
+
+## Migration Guide
+Only if actual breaking changes are present in the code.
+
+PROJECT-AGNOSTIC RULES:
+- Only include changes visible in the actual code context
+- Reference real file names where relevant
+- Do NOT invent version numbers unless they are in the code
+- Do NOT add generic changelog entries not supported by the code
+- If the code context does not contain enough change history, write: "Insufficient change history in provided context" """,
+}
+
+
+DOC_PROMPT = PromptTemplate(
+    template="""You are a senior technical writer and software architect.
+
+Repository: {target}
+
+Code context:
+{context}
+
+Task: {task}
+
+{guard}
+
+Guidelines:
+- Write in clear, professional English
+- Use proper markdown formatting with headers, code blocks, and lists
+- Ground EVERY claim in the actual code provided
+- Include only actual file names, functions, and configurations found in the code context
+- Make it immediately useful
+
+Generate the documentation now:""",
+    input_variables=["context", "target", "task", "guard"]
+)

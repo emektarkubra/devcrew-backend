@@ -9,15 +9,21 @@ from app.routes.users import get_current_user_id
 from app.services.agents.documentation import generate_documentation
 from app.services.agents.indexer import index_repo
 from app.services.agents.codebase_qa import codebase_qa
-from app.core.exceptions import UserNotFoundError, AppError
+from app.core.exceptions import UserNotFoundError, AppError, AIRateLimitError
 from app.schemas.agents import (
     ApplyFixRequest, IndexRequest, IndexResponse,
     QARequest, QAResponse,
     HistoryRequest, HistoryItemResponse,
     PRReviewRequest, PRHistoryRequest, DebugRequest,
     DebugHistoryRequest, DocumentationRequest,
-    DocumentationHistoryRequest, RepoFilesRequest,
-    TestGeneratorRequest, TestHistoryRequest, ApplyFixesToBranchRequest
+    DocumentationHistoryRequest, RepoFilesRequest, SaveTestsRequest,
+    TestGeneratorRequest, TestHistoryRequest, ApplyFixesToBranchRequest,
+    ApplyDebugFixRequest,
+    CheckIndexResponse, PRReviewResponse, PRHistoryItemResponse,
+    DebugResponse, DebugHistoryItemResponse, DebugApplyFixResponse,
+    TestGeneratorResponse, TestHistoryItemResponse, SaveTestsResponse,
+    DocumentationResponse, DocumentationHistoryItemResponse,
+    RepoFilesResponse, ApplyFixesResponse, ApplyFixesToBranchResponse,
 )
 from app.services.agents.pr_review import generate_fixes, pr_review, apply_fixes_to_branch
 from app.models.pr_review_history import PrReviewQueryHistory
@@ -27,7 +33,6 @@ from app.services.repo_service import fetch_all_repo_files
 from app.services.agents.test_generator import generate_tests
 from app.models.test_history import TestHistory
 from app.models.embedding import CodeEmbedding
-from app.schemas.agents import ApplyDebugFixRequest
 
 router = APIRouter(prefix="/agents")
 
@@ -52,16 +57,19 @@ async def index_repository(payload: IndexRequest, db: Session = Depends(get_db))
     except AppError:
         raise
     except Exception as e:
+        err_str = str(e).lower()
+        if "rate_limit_exceeded" in err_str or "429" in err_str or "rate limit" in err_str:
+            raise AIRateLimitError(owner=payload.owner, repo=payload.repo) from e
         raise AppError(
             code        = "INDEX_ERROR",
-            message     = "An error occurred while indexing the repository.",
+            message     = f"An error occurred while indexing the repository: {e}",
             status_code = 500,
             details     = {"owner": payload.owner, "repo": payload.repo},
         ) from e
-        
 
-# app/routes/agents.py
-@router.post("/check-index")
+
+# check-index
+@router.post("/check-index", response_model=CheckIndexResponse)
 async def check_index(payload: IndexRequest, db: Session = Depends(get_db)):
     user_id   = get_current_user_id(payload.token)
     repo_full = f"{payload.owner}/{payload.repo}"
@@ -103,9 +111,12 @@ async def qa(payload: QARequest, db: Session = Depends(get_db)):
     except AppError:
         raise
     except Exception as e:
+        err_str = str(e).lower()
+        if "rate_limit_exceeded" in err_str or "429" in err_str or "rate limit" in err_str:
+            raise AIRateLimitError(owner=payload.owner, repo=payload.repo) from e
         raise AppError(
             code        = "CODEBASE_QA_ERROR",
-            message     = "An error occurred while processing the codebase Q&A.",
+            message     = f"An error occurred while processing the codebase Q&A: {e}",
             status_code = 500,
             details     = {"owner": payload.owner, "repo": payload.repo},
         ) from e
@@ -137,20 +148,20 @@ async def qa_history(payload: HistoryRequest, db: Session = Depends(get_db)):
                 timeAgo    = h.created_at,
             )
             for h in history
-]
+        ]
     except AppError:
         raise
     except Exception as e:
         raise AppError(
             code        = "CODEBASE_QA_HISTORY_ERROR",
-            message     = "An error occurred while fetching Q&A history.",
+            message     = f"An error occurred while fetching Q&A history: {e}",
             status_code = 500,
             details     = {"repo": repo_full},
         ) from e
 
 
 # pr-review
-@router.post("/pr-review")
+@router.post("/pr-review", response_model=PRReviewResponse)
 async def review_pr(payload: PRReviewRequest, db: Session = Depends(get_db)):
     user_id = get_current_user_id(payload.token)
     user    = db.query(User).filter(User.id == user_id).first()
@@ -170,15 +181,18 @@ async def review_pr(payload: PRReviewRequest, db: Session = Depends(get_db)):
     except AppError:
         raise
     except Exception as e:
+        err_str = str(e).lower()
+        if "rate_limit_exceeded" in err_str or "429" in err_str or "rate limit" in err_str:
+            raise AIRateLimitError(owner=payload.owner, repo=payload.repo) from e
         raise AppError(
             code        = "PR_REVIEW_ERROR",
-            message     = "An error occurred while reviewing the pull request.",
+            message     = f"An error occurred while reviewing the pull request: {e}",
             status_code = 500,
             details     = {"owner": payload.owner, "repo": payload.repo, "pr_number": payload.pr_number},
         ) from e
 
 
-@router.post("/pr-review/history")
+@router.post("/pr-review/history", response_model=List[PRHistoryItemResponse])
 async def pr_review_history(payload: PRHistoryRequest, db: Session = Depends(get_db)):
     user_id   = get_current_user_id(payload.token)
     repo_full = f"{payload.owner}/{payload.repo}"
@@ -215,14 +229,14 @@ async def pr_review_history(payload: PRHistoryRequest, db: Session = Depends(get
     except Exception as e:
         raise AppError(
             code        = "PR_REVIEW_HISTORY_ERROR",
-            message     = "An error occurred while fetching PR review history.",
+            message     = f"An error occurred while fetching PR review history: {e}",
             status_code = 500,
             details     = {"repo": repo_full},
         ) from e
 
 
 # debugging
-@router.post("/debug")
+@router.post("/debug", response_model=DebugResponse)
 async def debug(payload: DebugRequest, db: Session = Depends(get_db)):
     user_id = get_current_user_id(payload.token)
     user    = db.query(User).filter(User.id == user_id).first()
@@ -236,21 +250,24 @@ async def debug(payload: DebugRequest, db: Session = Depends(get_db)):
             owner        = payload.owner,
             repo         = payload.repo,
             user_id      = user.id,
-            access_token = user.access_token,  # ← ekle
+            access_token = user.access_token,
             db           = db,
         )
     except AppError:
         raise
     except Exception as e:
+        err_str = str(e).lower()
+        if "rate_limit_exceeded" in err_str or "429" in err_str or "rate limit" in err_str:
+            raise AIRateLimitError(owner=payload.owner, repo=payload.repo) from e
         raise AppError(
             code        = "DEBUG_ERROR",
-            message     = "An error occurred while debugging the error.",
+            message     = f"An error occurred while debugging the error: {e}",
             status_code = 500,
             details     = {"owner": payload.owner, "repo": payload.repo},
         ) from e
 
 
-@router.post("/debug/history")
+@router.post("/debug/history", response_model=List[DebugHistoryItemResponse])
 async def debug_history(payload: DebugHistoryRequest, db: Session = Depends(get_db)):
     user_id   = get_current_user_id(payload.token)
     repo_full = f"{payload.owner}/{payload.repo}"
@@ -285,14 +302,13 @@ async def debug_history(payload: DebugHistoryRequest, db: Session = Depends(get_
     except Exception as e:
         raise AppError(
             code        = "DEBUG_HISTORY_ERROR",
-            message     = "An error occurred while fetching debug history.",
+            message     = f"An error occurred while fetching debug history: {e}",
             status_code = 500,
             details     = {"repo": repo_full},
         ) from e
 
 
-
-@router.post("/debug/apply-fix")
+@router.post("/debug/apply-fix", response_model=DebugApplyFixResponse)
 async def debug_apply_fix(payload: ApplyDebugFixRequest, db: Session = Depends(get_db)):
     user_id = get_current_user_id(payload.token)
     user    = db.query(User).filter(User.id == user_id).first()
@@ -311,16 +327,19 @@ async def debug_apply_fix(payload: ApplyDebugFixRequest, db: Session = Depends(g
     except AppError:
         raise
     except Exception as e:
+        err_str = str(e).lower()
+        if "rate_limit_exceeded" in err_str or "429" in err_str or "rate limit" in err_str:
+            raise AIRateLimitError(owner=payload.owner, repo=payload.repo) from e
         raise AppError(
             code        = "DEBUG_APPLY_FIX_ERROR",
-            message     = "An error occurred while applying debug fix.",
+            message     = f"An error occurred while applying debug fix: {e}",
             status_code = 500,
             details     = {"error": str(e)},
         ) from e
 
 
 # test generator
-@router.post("/test-generator")
+@router.post("/test-generator", response_model=TestGeneratorResponse)
 async def test_generator(payload: TestGeneratorRequest, db: Session = Depends(get_db)):
     user_id = get_current_user_id(payload.token)
     user    = db.query(User).filter(User.id == user_id).first()
@@ -341,15 +360,18 @@ async def test_generator(payload: TestGeneratorRequest, db: Session = Depends(ge
     except AppError:
         raise
     except Exception as e:
+        err_str = str(e).lower()
+        if "rate_limit_exceeded" in err_str or "429" in err_str or "rate limit" in err_str:
+            raise AIRateLimitError(owner=payload.owner, repo=payload.repo) from e
         raise AppError(
             code        = "TEST_GENERATOR_ERROR",
-            message     = "An error occurred while generating tests.",
+            message     = f"An error occurred while generating tests: {e}",
             status_code = 500,
             details     = {"owner": payload.owner, "repo": payload.repo, "target": payload.target},
         ) from e
 
 
-@router.post("/test-generator/history")
+@router.post("/test-generator/history", response_model=List[TestHistoryItemResponse])
 async def test_generator_history(payload: TestHistoryRequest, db: Session = Depends(get_db)):
     user_id   = get_current_user_id(payload.token)
     repo_full = f"{payload.owner}/{payload.repo}"
@@ -373,6 +395,7 @@ async def test_generator_history(payload: TestHistoryRequest, db: Session = Depe
                 "coverage":  h.coverage,
                 "tests":     h.tests,
                 "framework": h.framework,
+                "mergedCode": h.merged_code,
                 "timeAgo":   h.created_at,
             }
             for h in history
@@ -382,14 +405,42 @@ async def test_generator_history(payload: TestHistoryRequest, db: Session = Depe
     except Exception as e:
         raise AppError(
             code        = "TEST_HISTORY_ERROR",
-            message     = "An error occurred while fetching test history.",
+            message     = f"An error occurred while fetching test history: {e}",
             status_code = 500,
             details     = {"repo": repo_full},
         ) from e
 
 
+@router.post("/test-generator/save", response_model=SaveTestsResponse)
+async def save_tests(payload: SaveTestsRequest, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(payload.token)
+    user    = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    try:
+        combined = "\n\n".join([
+            f"// {t['name']}\n{t['code']}"
+            for t in payload.tests
+        ])
+        return {
+            "content":  combined,
+            "filename": payload.filename,
+        }
+    except AppError:
+        raise
+    except Exception as e:
+        raise AppError(
+            code        = "SAVE_TESTS_ERROR",
+            message     = f"Failed to generate test file: {e}",
+            status_code = 500,
+            details     = {"error": str(e)},
+        ) from e
+
+
 # documentation
-@router.post("/documentation")
+@router.post("/documentation", response_model=DocumentationResponse)
 async def generate_docs(payload: DocumentationRequest, db: Session = Depends(get_db)):
     user_id = get_current_user_id(payload.token)
     user    = db.query(User).filter(User.id == user_id).first()
@@ -410,15 +461,18 @@ async def generate_docs(payload: DocumentationRequest, db: Session = Depends(get
     except AppError:
         raise
     except Exception as e:
+        err_str = str(e).lower()
+        if "rate_limit_exceeded" in err_str or "429" in err_str or "rate limit" in err_str:
+            raise AIRateLimitError(owner=payload.owner, repo=payload.repo) from e
         raise AppError(
             code        = "DOCUMENTATION_ERROR",
-            message     = "An error occurred while generating documentation.",
+            message     = f"An error occurred while generating documentation: {e}",
             status_code = 500,
             details     = {"owner": payload.owner, "repo": payload.repo, "target": payload.target},
         ) from e
 
 
-@router.post("/documentation/history")
+@router.post("/documentation/history", response_model=List[DocumentationHistoryItemResponse])
 async def documentation_history(payload: DocumentationHistoryRequest, db: Session = Depends(get_db)):
     user_id   = get_current_user_id(payload.token)
     repo_full = f"{payload.owner}/{payload.repo}"
@@ -450,14 +504,14 @@ async def documentation_history(payload: DocumentationHistoryRequest, db: Sessio
     except Exception as e:
         raise AppError(
             code        = "DOCUMENTATION_HISTORY_ERROR",
-            message     = "An error occurred while fetching documentation history.",
+            message     = f"An error occurred while fetching documentation history: {e}",
             status_code = 500,
             details     = {"repo": repo_full},
         ) from e
 
 
 # repo files
-@router.post("/repo-files")
+@router.post("/repo-files", response_model=RepoFilesResponse)
 async def repo_files(payload: RepoFilesRequest, db: Session = Depends(get_db)):
     user_id = get_current_user_id(payload.token)
     user    = db.query(User).filter(User.id == user_id).first()
@@ -477,14 +531,14 @@ async def repo_files(payload: RepoFilesRequest, db: Session = Depends(get_db)):
     except Exception as e:
         raise AppError(
             code        = "REPO_FILES_ERROR",
-            message     = "An error occurred while fetching repository files.",
+            message     = f"An error occurred while fetching repository files: {e}",
             status_code = 500,
             details     = {"owner": payload.owner, "repo": payload.repo},
         ) from e
 
 
 # apply fixes
-@router.post("/pr-review/apply-fixes")
+@router.post("/pr-review/apply-fixes", response_model=ApplyFixesResponse)
 async def apply_fixes_endpoint(payload: ApplyFixRequest, db: Session = Depends(get_db)):
     user_id = get_current_user_id(payload.token)
     user    = db.query(User).filter(User.id == user_id).first()
@@ -503,15 +557,18 @@ async def apply_fixes_endpoint(payload: ApplyFixRequest, db: Session = Depends(g
     except AppError:
         raise
     except Exception as e:
+        err_str = str(e).lower()
+        if "rate_limit_exceeded" in err_str or "429" in err_str or "rate limit" in err_str:
+            raise AIRateLimitError(owner=payload.owner, repo=payload.repo) from e
         raise AppError(
             code        = "APPLY_FIX_ERROR",
-            message     = "An error occurred while generating fixes.",
+            message     = f"An error occurred while generating fixes: {e}",
             status_code = 500,
             details     = {"error": str(e)},
         ) from e
 
 
-@router.post("/pr-review/apply-fixes-to-branch")
+@router.post("/pr-review/apply-fixes-to-branch", response_model=ApplyFixesToBranchResponse)
 async def apply_fixes_to_branch_endpoint(payload: ApplyFixesToBranchRequest, db: Session = Depends(get_db)):
     user_id = get_current_user_id(payload.token)
     user    = db.query(User).filter(User.id == user_id).first()
@@ -532,7 +589,7 @@ async def apply_fixes_to_branch_endpoint(payload: ApplyFixesToBranchRequest, db:
     except Exception as e:
         raise AppError(
             code        = "APPLY_FIX_TO_BRANCH_ERROR",
-            message     = "An error occurred while applying fixes to branch.",
+            message     = f"An error occurred while applying fixes to branch: {e}",
             status_code = 500,
             details     = {"error": str(e)},
         ) from e

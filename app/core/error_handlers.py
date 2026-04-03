@@ -114,21 +114,26 @@ class ErrorLogger:
         return "unknown"
 
 
-def create_error_response(    # client’a dönecek JSON’u üretir:
+def create_error_response(
     *,
     status_code: int,
-    code: str,
-    message: str,
-    error_id: str,
-    details: Optional[Dict[str, Any]] = None,
+    code:        str,
+    message:     str,
+    error_id:    str,
+    error_code:  Optional[int]       = None,
+    details:     Optional[Dict[str, Any]] = None,
 ) -> JSONResponse:
     payload: Dict[str, Any] = {
-        "error": True,
-        "code": code,
-        "message": message,
+        "error":    True,
+        "code":     code,
+        "message":  message,
         "error_id": error_id,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
     }
+    if error_code is not None:
+        payload["error_code"] = error_code
+    
+    payload["timestamp"] = datetime.utcnow().isoformat() + "Z"
+    
     if details:
         payload["details"] = details
 
@@ -153,7 +158,7 @@ def _format_validation_errors(exc: RequestValidationError) -> List[Dict[str, Any
 
 # ---------------- Handlers ----------------
 
-async def app_error_handler(request: Request, exc: AppError) -> JSONResponse: # yazdigimiz custom AppError’ları yakalar.
+async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     error_id = ErrorLogger.log_error(
         exc,
         request=request,
@@ -161,11 +166,12 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse: # 
     )
 
     return create_error_response(
-        status_code=exc.status_code,
-        code=exc.code,
-        message=exc.client_message,
-        error_id=error_id,
-        details=exc.details,
+        status_code = exc.status_code,
+        code        = exc.code,
+        message     = exc.client_message,
+        error_id    = error_id,
+        error_code  = getattr(exc, "http_code", None),
+        details     = exc.details,
     )
 
 
