@@ -78,63 +78,73 @@ async def generate_tests(
             details     = {"target": target, "repo": f"{owner}/{repo}"},
         )
 
-    try:
-        answer = chain.invoke({
-            "target":    target,
-            "framework": framework,
-            "context":   context,
-        })
-    except Exception as e:
-        raise AppError(
-            code        = "LLM_ERROR",
-            message     = "LLM failed to generate tests.",
-            status_code = 500,
-            details     = {"error": str(e)},
-        ) from e
+    # dosya büyükse chunk'lara böl, her chunk için ayrı test üret
+    MAX_CHARS = 6000
+    if len(context) > MAX_CHARS:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+        splitter = RecursiveCharacterTextSplitter(chunk_size=MAX_CHARS, chunk_overlap=200)
+        chunks   = splitter.split_text(context)
+    else:
+        chunks = [context]
 
-    try:
-        cleaned = clean_llm_json(answer)
-        result  = json.loads(cleaned)
-    except Exception as e:
+    all_tests        = []
+    total_unit       = 0
+    total_edge       = 0
+    total_integration = 0
+    total_coverage   = 0
+
+    for i, chunk in enumerate(chunks[:3]):  # max 3 chunk — fazlası çok yavaş olur
+        try:
+            answer = chain.invoke({
+                "target":    target,
+                "framework": framework,
+                "context":   chunk,
+            })
+        except Exception as e:
+            continue  # bir chunk hata verse bile devam et
+
+        try:
+            cleaned = clean_llm_json(answer)
+            result  = json.loads(cleaned)
+        except Exception:
+            continue
+
+        chunk_tests        = result.get("tests", [])
+        all_tests         += chunk_tests
+        total_unit        += result.get("unitCount",        0)
+        total_edge        += result.get("edgeCount",        0)
+        total_integration += result.get("integrationCount", 0)
+        total_coverage    += result.get("coverage",         0)
+
+    if not all_tests:
         raise AppError(
             code        = "TEST_PARSE_ERROR",
-            message     = "Failed to parse test generation response.",
+            message     = "Could not generate any tests.",
             status_code = 500,
-            details     = {
-                "error":  str(e),
-                "answer": answer[:300],
-            },
         )
 
-    # validate required fields
-    required = ["totalTests", "coverage", "unitCount", "edgeCount", "integrationCount", "tests"]
-    missing  = [f for f in required if f not in result]
-    if missing:
-        raise AppError(
-            code        = "TEST_PARSE_ERROR",
-            message     = f"LLM response missing required fields: {', '.join(missing)}",
-            status_code = 500,
-            details     = {"missing": missing},
-        )
+    avg_coverage = total_coverage // len(chunks[:3])
 
-    if not isinstance(result.get("tests"), list):
-        raise AppError(
-            code        = "TEST_PARSE_ERROR",
-            message     = "LLM response 'tests' field is not a list.",
-            status_code = 500,
-        )
+    result = {
+        "totalTests":       len(all_tests),
+        "coverage":         avg_coverage,
+        "unitCount":        total_unit,
+        "edgeCount":        total_edge,
+        "integrationCount": total_integration,
+        "tests":            all_tests,
+    }
+
+    merged_code = merge_tests(all_tests, target)
 
     try:
-        merged_code = merge_tests(result.get("tests", []), target)
-        
         db.add(TestHistory(
-            user_id    = user_id,
-            repo       = f"{owner}/{repo}",
-            target     = target,
-            framework  = framework,
-            test_count = result.get("totalTests", 0),
-            coverage   = result.get("coverage", 0),
-            tests      = result.get("tests", []),
+            user_id     = user_id,
+            repo        = f"{owner}/{repo}",
+            target      = target,
+            framework   = framework,
+            test_count  = len(all_tests),
+            coverage    = avg_coverage,
+            tests       = all_tests,
             merged_code = merged_code,
         ))
         db.commit()
@@ -148,9 +158,16 @@ async def generate_tests(
 
 
     return {
-        **result,
-        "mergedCode": merged_code,
-}
+        "target":           target,
+        "framework":        framework,
+        "testCount":        len(all_tests),
+        "coverage":         avg_coverage,
+        "unitCount":        total_unit,
+        "edgeCount":        total_edge,
+        "integrationCount": total_integration,
+        "tests":            all_tests,
+        "mergedCode":       merged_code,
+    }
 
 
 
