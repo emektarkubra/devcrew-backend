@@ -54,3 +54,32 @@ SUPPORTED_EXTENSIONS = (
     # Terraform
     ".tf",
 )
+
+
+TESTABLE_EXTENSIONS = [
+    ".py",
+    ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+    ".java",
+    ".kt", ".kts",
+    ".go",
+    ".rs",
+    ".c", ".cpp", ".cc", ".cxx", ".h", ".hpp",
+    ".cs",
+    ".rb",
+    ".php",
+    ".swift",
+    ".scala",
+    ".dart",
+    ".ex", ".exs",
+    ".hs",
+    ".lua",
+    ".pl",
+    ".r", ".R",
+]
+
+EXCLUDE_PATTERNS = [
+    "test", "spec", "node_modules", "__pycache__",
+    "postcss.config", "tailwind.config", "vite.config",
+    "jest.config", "eslint", ".d.ts", "webpack.config",
+    "alembic", "migration", "migrations",   # ← ekle
+]

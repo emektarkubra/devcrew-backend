@@ -104,6 +104,20 @@ class SaveTestsRequest(BaseModel):
     filename:  str
     framework: str
 
+class TeamModeRequest(BaseModel):
+    token:           str
+    owner:           str
+    repo:            str
+    selected_agents: list[str]
+
+class TeamModeResponse(BaseModel):
+    repo:         str
+    agents:       list[str]
+    results:      dict
+    health_score: Optional[int] = None
+    summary:      Optional[str] = None
+    top_actions:  Optional[list[str]] = None
+
 
 # ─── Response Models ──────────────────────────────────────────────────────────
 

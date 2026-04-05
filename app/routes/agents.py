@@ -33,6 +33,11 @@ from app.services.repo_service import fetch_all_repo_files
 from app.services.agents.test_generator import generate_tests
 from app.models.test_history import TestHistory
 from app.models.embedding import CodeEmbedding
+from app.services.agents.team_mode import run_team_mode
+from app.schemas.agents import TeamModeRequest, TeamModeResponse
+from fastapi.responses import StreamingResponse
+import asyncio
+import json
 
 router = APIRouter(prefix="/agents")
 
@@ -593,3 +598,117 @@ async def apply_fixes_to_branch_endpoint(payload: ApplyFixesToBranchRequest, db:
             status_code = 500,
             details     = {"error": str(e)},
         ) from e
+    
+
+# team mode stream
+@router.get("/team-mode/stream")
+async def team_mode_stream(
+    token:           str,
+    owner:           str,
+    repo:            str,
+    selected_agents: str,
+    db: Session = Depends(get_db),
+):
+    try:
+        user_id      = get_current_user_id(token)
+        user         = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise UserNotFoundError(user_id=user_id)
+        access_token = user.access_token  # ← generator başlamadan önce çek
+    except Exception as e:
+        raise AppError(code="AUTH_ERROR", message=str(e), status_code=401)
+
+    agents = [a.strip() for a in selected_agents.split(",") if a.strip()]
+
+    async def event_stream():
+        from app.services.agents.team_mode.nodes import make_nodes, aggregator_node
+
+        def send(event: str, data: dict) -> str:
+            return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+        try:
+            codebase_node, pr_review_node, test_node, doc_node = make_nodes(db, user_id)
+
+            node_map = {
+                "codebase":      codebase_node,
+                "pr_review":     pr_review_node,
+                "test":          test_node,
+                "documentation": doc_node,
+            }
+
+            state = {
+                "repo":            f"{owner}/{repo}",
+                "owner":           owner,
+                "repo_name":       repo,
+                "access_token":    access_token,
+                "selected_agents": agents,
+                "completed":       [],
+                "current_agent":   "",
+                "retry_count":     0,
+                "results":         {},
+                "health_score":    None,
+                "health_summary":  None,
+                "top_actions":     None,
+            }
+
+            for agent in agents:
+                try:
+                    yield send("agent_start", {"agent": agent})
+                    await asyncio.sleep(0)
+
+                    state["current_agent"] = agent
+                    node_fn = node_map.get(agent)
+                    if node_fn:
+                        state = await node_fn(state)
+
+                    result = state.get("results", {}).get(agent, {})
+
+                    yield send("agent_done", {
+                        "agent":   agent,
+                        "summary": result.get("summary", ""),
+                        "actions": result.get("actions", []),
+                        "score":   result.get("score", 0),
+                    })
+                    await asyncio.sleep(0)
+
+                    if agent not in state["completed"]:
+                        state["completed"].append(agent)
+
+                except Exception as e:
+                    yield send("agent_done", {
+                        "agent":   agent,
+                        "summary": f"Error: {str(e)}",
+                        "actions": [],
+                        "score":   0,
+                    })
+                    if agent not in state["completed"]:
+                        state["completed"].append(agent)
+                    await asyncio.sleep(0)
+                    continue
+
+            try:
+                state = aggregator_node(state)
+            except Exception as e:
+                state["health_score"]   = 0
+                state["health_summary"] = f"Aggregation error: {str(e)}"
+                state["top_actions"]    = []
+
+            yield send("complete", {
+                "health_score": state.get("health_score", 0),
+                "summary":      state.get("health_summary", ""),
+                "top_actions":  state.get("top_actions", []),
+                "results":      state.get("results", {}),
+            })
+
+        except Exception as e:
+            yield send("error", {"message": str(e)})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":               "no-cache",
+            "X-Accel-Buffering":           "no",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
