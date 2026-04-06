@@ -118,6 +118,22 @@ class TeamModeResponse(BaseModel):
     summary:      Optional[str] = None
     top_actions:  Optional[list[str]] = None
 
+class TeamModeHistoryItem(BaseModel):
+    id:           int
+    repo:         str
+    agents:       list[str]
+    results:      dict
+    health_score: Optional[int]
+    summary:      Optional[str]
+    top_actions:  Optional[list[str]]
+    timeAgo:      str
+
+    class Config:
+        from_attributes = True
+
+class TokenRequest(BaseModel):
+    token: str
+
 
 # ─── Response Models ──────────────────────────────────────────────────────────
 

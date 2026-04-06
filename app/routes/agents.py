@@ -23,7 +23,7 @@ from app.schemas.agents import (
     DebugResponse, DebugHistoryItemResponse, DebugApplyFixResponse,
     TestGeneratorResponse, TestHistoryItemResponse, SaveTestsResponse,
     DocumentationResponse, DocumentationHistoryItemResponse,
-    RepoFilesResponse, ApplyFixesResponse, ApplyFixesToBranchResponse,
+    RepoFilesResponse, ApplyFixesResponse, ApplyFixesToBranchResponse, TokenRequest
 )
 from app.services.agents.pr_review import generate_fixes, pr_review, apply_fixes_to_branch
 from app.models.pr_review_history import PrReviewQueryHistory
@@ -36,6 +36,7 @@ from app.models.embedding import CodeEmbedding
 from app.services.agents.team_mode import run_team_mode
 from app.schemas.agents import TeamModeRequest, TeamModeResponse
 from fastapi.responses import StreamingResponse
+from app.models.team_mode_history import TeamModeHistory
 import asyncio
 import json
 
@@ -601,6 +602,7 @@ async def apply_fixes_to_branch_endpoint(payload: ApplyFixesToBranchRequest, db:
     
 
 # team mode stream
+
 @router.get("/team-mode/stream")
 async def team_mode_stream(
     token:           str,
@@ -614,7 +616,7 @@ async def team_mode_stream(
         user         = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise UserNotFoundError(user_id=user_id)
-        access_token = user.access_token  # ← generator başlamadan önce çek
+        access_token = user.access_token
     except Exception as e:
         raise AppError(code="AUTH_ERROR", message=str(e), status_code=401)
 
@@ -693,6 +695,21 @@ async def team_mode_stream(
                 state["health_summary"] = f"Aggregation error: {str(e)}"
                 state["top_actions"]    = []
 
+            # ── DB'ye kaydet ──────────────────────────────────────
+            try:
+                db.add(TeamModeHistory(
+                    user_id      = user_id,
+                    repo         = f"{owner}/{repo}",
+                    agents       = agents,
+                    results      = state.get("results", {}),
+                    health_score = state.get("health_score"),
+                    summary      = state.get("health_summary"),
+                    top_actions  = state.get("top_actions", []),
+                ))
+                db.commit()
+            except Exception:
+                pass  # history kaydetme başarısız olsa bile complete event gönder
+
             yield send("complete", {
                 "health_score": state.get("health_score", 0),
                 "summary":      state.get("health_summary", ""),
@@ -712,3 +729,48 @@ async def team_mode_stream(
             "Access-Control-Allow-Origin": "*",
         },
     )
+
+
+# team mode history
+
+@router.post("/team-mode/history")
+async def get_team_mode_history(
+    payload: TokenRequest,
+    db: Session = Depends(get_db),
+):
+    user_id = get_current_user_id(payload.token)
+    user    = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    try:
+        items = (
+            db.query(TeamModeHistory)
+            .filter(TeamModeHistory.user_id == user_id)
+            .order_by(TeamModeHistory.created_at.desc())
+            .limit(20)
+            .all()
+        )
+
+        return [
+            {
+                "id":           item.id,
+                "repo":         item.repo,
+                "agents":       item.agents,
+                "results":      item.results,
+                "health_score": item.health_score,
+                "summary":      item.summary,
+                "top_actions":  item.top_actions,
+                "timeAgo":      item.created_at.isoformat(),
+            }
+            for item in items
+        ]
+    except AppError:
+        raise
+    except Exception as e:
+        raise AppError(
+            code        = "HISTORY_FETCH_ERROR",
+            message     = "Failed to fetch team mode history.",
+            status_code = 500,
+            details     = {"error": str(e)},
+        ) from e
