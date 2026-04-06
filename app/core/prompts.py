@@ -756,3 +756,428 @@ Guidelines:
 Generate the documentation now:""",
     input_variables=["context", "target", "task", "guard"]
 )
+
+
+# ── Team Mode ──────────────────────────────────────────────────────────────────
+
+TEAM_CODEBASE_PROMPT = PromptTemplate(
+    template="""You are a senior software engineer performing a deep codebase health analysis.
+
+Repository: {repo}
+
+File list:
+{file_list}
+
+Key file contents:
+{context}
+
+Perform a thorough analysis covering:
+1. Code structure and organization
+2. Naming conventions and readability
+3. Error handling patterns
+4. Code duplication and DRY principles
+5. Security concerns (hardcoded secrets, SQL injection, etc.)
+6. Performance bottlenecks
+7. Missing tests and documentation
+8. Dependency management
+9. Circular imports or anti-patterns
+10. Dead code or unused imports
+
+Return ONLY valid JSON, no markdown, no explanation, no preamble:
+{{
+    "score": <integer 0-100>,
+    "summary": "3-4 sentence detailed overview covering structure quality, main strengths, and critical weaknesses",
+    "actions": [
+        "specific actionable improvement referencing actual file and function names (max 5)"
+    ],
+    "issues": [
+        {{
+            "title": "concise issue title",
+            "severity": "high | medium | low",
+            "file": "actual file path from file list",
+            "description": "specific explanation of what is wrong, why it matters, and what line or pattern causes it"
+        }}
+    ]
+}}
+
+Scoring guide:
+- 90-100: Excellent — clean, well-tested, well-documented
+- 70-89: Good — minor issues only
+- 50-69: Fair — real problems that need attention
+- 30-49: Poor — significant issues affecting maintainability
+- 0-29: Critical — major structural or security problems
+
+Rules:
+- issues must reference ACTUAL files visible in the file list
+- actions must name specific files and functions
+- Do NOT invent issues not visible in the code
+- Return ONLY valid JSON""",
+    input_variables=["repo", "file_list", "context"]
+)
+
+
+TEAM_PR_REVIEW_PROMPT = PromptTemplate(
+    template="""You are a senior software engineer reviewing all open pull requests in a repository.
+
+Repository: {repo}
+
+Open PRs:
+{pr_list}
+
+PR Diffs:
+{diffs}
+
+For each PR analyze:
+1. Code correctness and logic errors
+2. Missing error handling
+3. Security vulnerabilities
+4. Missing or insufficient tests
+5. Breaking changes
+6. Performance implications
+7. Code style consistency
+
+Return ONLY valid JSON, no markdown, no explanation, no preamble:
+{{
+    "score": <integer 0-100>,
+    "summary": "3-4 sentence overview covering how many PRs were reviewed, key findings per PR, and overall merge readiness",
+    "pr_count": <number of PRs reviewed>,
+    "actions": [
+        "specific action referencing PR number and file (max 5)"
+    ],
+    "issues": [
+        {{
+            "pr_number": <number>,
+            "pr_title": "actual PR title",
+            "severity": "high | medium | low",
+            "file": "affected file",
+            "description": "specific explanation of the issue found in this PR"
+        }}
+    ]
+}}
+
+Scoring guide:
+- 90-100: All PRs are clean and ready to merge
+- 70-89: Minor issues, most PRs are mergeable
+- 50-69: Some PRs have real issues that must be fixed
+- 30-49: Multiple PRs have serious problems
+- 0-29: Critical issues, nothing should be merged
+
+Rules:
+- If no PRs exist, return score 100, empty issues, pr_count 0, and explain in summary
+- Only report issues directly visible in the diffs
+- Return ONLY valid JSON""",
+    input_variables=["repo", "pr_list", "diffs"]
+)
+
+
+TEAM_TEST_PROMPT = PromptTemplate(
+    template="""You are a senior software engineer assessing and improving test coverage for a repository.
+
+Repository: {repo}
+
+Files selected for testing:
+{files}
+
+File contents:
+{context}
+
+Framework: {framework}
+
+Analyze the code and generate comprehensive tests covering:
+1. Happy path — normal expected behavior
+2. Edge cases — boundary conditions, empty inputs, null values
+3. Error cases — invalid inputs, exceptions
+4. Integration — component interactions
+5. Business logic — domain-specific rules
+
+Return ONLY valid JSON, no markdown, no explanation, no preamble:
+{{
+    "score": <integer 0-100 reflecting overall test health of the repo>,
+    "summary": "3-4 sentence overview covering which file was tested, what aspects were covered, estimated coverage, and what remains untested",
+    "test_count": <number of tests generated>,
+    "coverage": <estimated coverage percentage as integer>,
+    "actions": [
+        "specific testing improvement with file name (max 5)"
+    ],
+    "tests": [
+        {{
+            "name": "descriptive_test_name",
+            "type": "unit | edge | integration",
+            "description": "exactly what this test verifies and why it matters",
+            "code": "complete runnable test code using {framework}"
+        }}
+    ]
+}}
+
+Rules:
+- Tests must use {framework} syntax
+- Every test must have real assertions, not placeholders
+- Code must be complete and runnable
+- Use actual function/class names from the file content
+- Return ONLY valid JSON""",
+    input_variables=["repo", "files", "context", "framework"]
+)
+
+
+TEAM_DOC_PROMPT = PromptTemplate(
+    template="""You are a senior technical writer generating essential documentation for a repository.
+
+Repository: {repo}
+
+Key files and their contents:
+{context}
+
+Generate comprehensive documentation covering the actual codebase. Include:
+1. What the project does and why it exists
+2. Complete tech stack with versions where visible
+3. All environment variables found in the code
+4. Setup and installation steps based on actual config files
+5. Project structure based on actual files
+6. API endpoints if visible in routes
+7. Architecture overview based on actual components
+
+Return ONLY valid JSON, no markdown, no explanation, no preamble:
+{{
+    "score": <integer 0-100 reflecting current documentation quality>,
+    "summary": "3-4 sentence overview of the project purpose, stack, and documentation completeness",
+    "docs_generated": <number of docs>,
+    "actions": [
+        "specific documentation improvement (max 5)"
+    ],
+    "docs": [
+        {{
+            "type": "readme | api | architecture | onboarding",
+            "title": "document title",
+            "content": "full detailed markdown content based on actual code"
+        }}
+    ]
+}}
+
+Scoring guide:
+- 90-100: Comprehensive docs, everything is clear
+- 70-89: Good docs with minor gaps
+- 50-69: Basic docs, important sections missing
+- 30-49: Minimal docs, hard to onboard
+- 0-29: No meaningful documentation
+
+Rules:
+- Base EVERYTHING on actual code visible in context
+- Never invent endpoints, env vars, or features
+- README must include all actual env vars found in config files
+- Return ONLY valid JSON""",
+    input_variables=["repo", "context"]
+)
+
+
+TEAM_VALIDATOR_PROMPT = PromptTemplate(
+    template="""You are a quality control agent validating an AI agent's output.
+
+Agent: {agent}
+Repository: {repo}
+
+Agent output:
+{output}
+
+Evaluate if the output meets quality standards:
+- score must be between 0-100
+- summary must be at least 2 sentences with specific details
+- actions must reference actual files or PR numbers
+- issues/tests must have real content, not placeholders
+
+Return ONLY valid JSON, no markdown, no explanation:
+{{
+    "decision": "done | retry",
+    "reason": "one sentence explanation of why output is sufficient or needs retry"
+}}
+
+Rules:
+- "done" if output has real content, specific details, and valid score
+- "retry" if output is empty, generic, or clearly hallucinated
+- Maximum retries is 2, so only retry for clearly bad output""",
+    input_variables=["agent", "repo", "output"]
+)
+
+
+TEAM_AGGREGATOR_PROMPT = PromptTemplate(
+    template="""You are a senior engineering lead summarizing a full repository health report.
+
+Repository: {repo}
+
+Agent results:
+{results}
+
+Generate a comprehensive final health report.
+
+Return ONLY valid JSON, no markdown, no explanation, no preamble:
+{{
+    "health_score": <integer 0-100, weighted average: codebase 35%, test 30%, pr_review 20%, documentation 15%>,
+    "summary": "4-5 sentence executive summary covering: overall health, codebase quality highlights, test coverage status, PR hygiene, documentation state, and most critical next steps",
+    "top_actions": [
+        "highest priority action from all agents, referencing specific files (max 5)"
+    ]
+}}
+
+Rules:
+- health_score must use the weighted formula above
+- summary must mention each agent that ran with specific findings
+- top_actions must be ordered by priority (most critical first)
+- Return ONLY valid JSON""",
+    input_variables=["repo", "results"]
+)
+
+TEAM_PR_REVIEW_PROMPT = PromptTemplate(
+    template="""You are a senior software engineer reviewing all open pull requests in a repository.
+
+Repository: {repo}
+
+Open PRs:
+{pr_list}
+
+PR Diffs:
+{diffs}
+
+Review all PRs and return ONLY valid JSON:
+{{
+    "score": <integer 0-100>,
+    "summary": "2-3 sentence overview of PR health",
+    "pr_count": <number of PRs reviewed>,
+    "actions": [
+        "specific actionable item (max 5)"
+    ],
+    "issues": [
+        {{
+            "pr_number": <number>,
+            "pr_title": "title",
+            "severity": "high | medium | low",
+            "description": "what needs to be fixed"
+        }}
+    ]
+}}
+
+Rules:
+- score 0 means all PRs have critical issues, 100 means all PRs are clean
+- Only report real issues visible in the diffs
+- If no PRs exist, return score 100 and empty issues""",
+    input_variables=["repo", "pr_list", "diffs"]
+)
+
+
+TEAM_TEST_PROMPT = PromptTemplate(
+    template="""You are a senior software engineer assessing test coverage for a repository.
+
+Repository: {repo}
+
+Critical files to test:
+{files}
+
+File contents:
+{context}
+
+Framework: {framework}
+
+Generate tests for the most critical file and return ONLY valid JSON:
+{{
+    "score": <integer 0-100>,
+    "summary": "2-3 sentence overview of test coverage",
+    "test_count": <number of tests generated>,
+    "coverage": <estimated coverage percentage>,
+    "actions": [
+        "specific testing improvement (max 5)"
+    ],
+    "tests": [
+        {{
+            "name": "test name",
+            "type": "unit | edge | integration",
+            "description": "what it tests",
+            "code": "actual test code"
+        }}
+    ]
+}}
+
+Rules:
+- Prioritize the most critical/complex file
+- Tests must be runnable with {framework}
+- score reflects overall test health of the repo""",
+    input_variables=["repo", "files", "context", "framework"]
+)
+
+
+TEAM_DOC_PROMPT = PromptTemplate(
+    template="""You are a senior technical writer generating essential documentation for a repository.
+
+Repository: {repo}
+
+Key files:
+{context}
+
+Generate the most important docs and return ONLY valid JSON:
+{{
+    "score": <integer 0-100>,
+    "summary": "2-3 sentence overview of documentation state",
+    "docs_generated": <number of docs>,
+    "actions": [
+        "specific documentation improvement (max 5)"
+    ],
+    "docs": [
+        {{
+            "type": "readme | api | architecture | onboarding",
+            "title": "doc title",
+            "content": "full markdown content"
+        }}
+    ]
+}}
+
+Rules:
+- score reflects current documentation quality
+- Always generate at minimum a README
+- Base everything on actual code visible in context""",
+    input_variables=["repo", "context"]
+)
+
+
+TEAM_VALIDATOR_PROMPT = PromptTemplate(
+    template="""You are a quality control agent validating an AI agent's output.
+
+Agent: {agent}
+Repository: {repo}
+
+Agent output:
+{output}
+
+Evaluate if the output is sufficient and return ONLY valid JSON:
+{{
+    "decision": "done | retry",
+    "reason": "one sentence explanation"
+}}
+
+Rules:
+- "done" if output has real content, real actions, and a valid score
+- "retry" if output is empty, hallucinated, or clearly insufficient
+- Maximum retries is 2, so be lenient on retry decisions""",
+    input_variables=["agent", "repo", "output"]
+)
+
+
+TEAM_AGGREGATOR_PROMPT = PromptTemplate(
+    template="""You are a senior engineering lead summarizing a full repository health report.
+
+Repository: {repo}
+
+Agent results:
+{results}
+
+Generate a final health report and return ONLY valid JSON:
+{{
+    "health_score": <integer 0-100, weighted average>,
+    "summary": "3-4 sentence executive summary of repo health",
+    "top_actions": [
+        "most important action across all agents (max 5)"
+    ]
+}}
+
+Rules:
+- health_score = weighted average of all agent scores
+- summary must cover all agents that ran
+- top_actions must be the highest priority items from all agents""",
+    input_variables=["repo", "results"]
+)

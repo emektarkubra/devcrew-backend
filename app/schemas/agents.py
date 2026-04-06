@@ -104,6 +104,36 @@ class SaveTestsRequest(BaseModel):
     filename:  str
     framework: str
 
+class TeamModeRequest(BaseModel):
+    token:           str
+    owner:           str
+    repo:            str
+    selected_agents: list[str]
+
+class TeamModeResponse(BaseModel):
+    repo:         str
+    agents:       list[str]
+    results:      dict
+    health_score: Optional[int] = None
+    summary:      Optional[str] = None
+    top_actions:  Optional[list[str]] = None
+
+class TeamModeHistoryItem(BaseModel):
+    id:           int
+    repo:         str
+    agents:       list[str]
+    results:      dict
+    health_score: Optional[int]
+    summary:      Optional[str]
+    top_actions:  Optional[list[str]]
+    timeAgo:      str
+
+    class Config:
+        from_attributes = True
+
+class TokenRequest(BaseModel):
+    token: str
+
 
 # ─── Response Models ──────────────────────────────────────────────────────────
 
@@ -158,14 +188,18 @@ class PRHistoryItemResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class AffectedFile(BaseModel):
+    path: str
+    name: str
+    code: str
+
 class DebugResponse(BaseModel):
-    error:         str
-    rootCause:     Optional[str] = None
-    severity:      Optional[str] = None
-    affectedFiles: List[str] = []
-    issues:        List[Any] = []
-    explanation:   Optional[str] = None
-    resolved:      Optional[bool] = None
+    rootCause:     str
+    severity:      str
+    explanation:   str
+    affectedFiles: list[AffectedFile]  # ← düzelt
+    issues:        list[dict]
+    contextFiles:  list[str]
 
 class DebugHistoryItemResponse(BaseModel):
     error:         str
@@ -190,17 +224,20 @@ class TestItem(BaseModel):
     code: str
 
 class TestGeneratorResponse(BaseModel):
-    target:     str
-    testCount:  int
-    coverage:   Optional[str] = None
-    tests:      List[Any] = []
-    framework:  str
-    mergedCode: Optional[str] = None
+    target:           str
+    testCount:        int
+    coverage:         Optional[int] = None
+    unitCount:        Optional[int] = None
+    edgeCount:        Optional[int] = None
+    integrationCount: Optional[int] = None
+    tests:            List[Any] = []
+    framework:        str
+    mergedCode:       Optional[str] = None
 
 class TestHistoryItemResponse(BaseModel):
     target:     str
     testCount:  int
-    coverage:   Optional[str] = None
+    coverage:   Optional[int] = None 
     tests:      List[Any] = []
     framework:  str
     mergedCode: Optional[str] = None

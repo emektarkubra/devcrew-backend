@@ -8,6 +8,7 @@ from app.models.repo import Repo
 from app.models.embedding import CodeEmbedding
 from app.models.code_query_history import CodeQueryHistory
 from app.models.pr_review_history import PrReviewQueryHistory
+from app.models import team_mode_history
 from app.core.error_handlers import register_exception_handlers
 from sqlalchemy import text
 

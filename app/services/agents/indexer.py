@@ -3,7 +3,7 @@ import base64
 from app.models.embedding import CodeEmbedding
 from sqlalchemy.orm import Session
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from app.core.exceptions import RepoIndexError, EmbeddingError, AppError
 from app.core.constants import SUPPORTED_EXTENSIONS
 from app.core.config import settings
@@ -21,7 +21,7 @@ _embedding_model = None
 def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
-        _embedding_model = HuggingFaceBgeEmbeddings(
+        _embedding_model = HuggingFaceEmbeddings(
             model_name="intfloat/multilingual-e5-small",
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},
