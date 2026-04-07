@@ -37,6 +37,7 @@ from app.services.agents.team_mode import run_team_mode
 from app.schemas.agents import TeamModeRequest, TeamModeResponse
 from fastapi.responses import StreamingResponse
 from app.models.team_mode_history import TeamModeHistory
+from app.services.agents.architecture import analyze_architecture
 import asyncio
 import json
 
@@ -602,7 +603,6 @@ async def apply_fixes_to_branch_endpoint(payload: ApplyFixesToBranchRequest, db:
     
 
 # team mode stream
-
 @router.get("/team-mode/stream")
 async def team_mode_stream(
     token:           str,
@@ -695,7 +695,6 @@ async def team_mode_stream(
                 state["health_summary"] = f"Aggregation error: {str(e)}"
                 state["top_actions"]    = []
 
-            # ── DB'ye kaydet ──────────────────────────────────────
             try:
                 db.add(TeamModeHistory(
                     user_id      = user_id,
@@ -708,7 +707,7 @@ async def team_mode_stream(
                 ))
                 db.commit()
             except Exception:
-                pass  # history kaydetme başarısız olsa bile complete event gönder
+                pass 
 
             yield send("complete", {
                 "health_score": state.get("health_score", 0),
@@ -730,8 +729,6 @@ async def team_mode_stream(
         },
     )
 
-
-# team mode history
 
 @router.post("/team-mode/history")
 async def get_team_mode_history(
@@ -770,7 +767,38 @@ async def get_team_mode_history(
     except Exception as e:
         raise AppError(
             code        = "HISTORY_FETCH_ERROR",
-            message     = "Failed to fetch team mode history.",
+            message     = f"Failed to fetch team mode history: {e}",
+            status_code = 500,
+            details     = {"error": str(e)},
+        ) from e
+    
+
+# architecture
+@router.get("/architecture")
+async def get_architecture(
+    token: str,
+    owner: str,
+    repo:  str,
+    db: Session = Depends(get_db),
+):
+    user_id = get_current_user_id(token)
+    user    = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    try:
+        result = await analyze_architecture(
+            owner        = owner,
+            repo         = repo,
+            access_token = user.access_token,
+        )
+        return result
+    except AppError:
+        raise
+    except Exception as e:
+        raise AppError(
+            code        = "ARCHITECTURE_ERROR",
+            message     = f"Failed to analyze architecture: {e}",
             status_code = 500,
             details     = {"error": str(e)},
         ) from e
