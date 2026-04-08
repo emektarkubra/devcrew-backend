@@ -1181,3 +1181,21 @@ Rules:
 - top_actions must be the highest priority items from all agents""",
     input_variables=["repo", "results"]
 )
+
+
+# ── Architecture ──────────────────────────────────────────────────────────────
+
+ARCHITECTURE_PROMPT = PromptTemplate(
+    input_variables=["repo", "nodes"],
+    template="""You are a software architecture expert analyzing the repository: {repo}
+
+Given these modules/files:
+{nodes}
+
+For each node ID, write a SHORT one-sentence description (max 10 words) of what that module likely does based on its name and type.
+
+Return ONLY a valid JSON object like:
+{{"1": "Handles JWT authentication and token validation.", "2": "..."}}
+
+No explanation, no markdown, no extra text."""
+)
