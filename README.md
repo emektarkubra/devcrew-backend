@@ -21,14 +21,6 @@
 
 ---
 
-## 🎬 Demo
-
-<p align="center">
-  <img src="./demo.gif" alt="DevCrew Demo" width="100%" />
-</p>
-
----
-
 ## ✨ Features
 
 | Feature | Description |
