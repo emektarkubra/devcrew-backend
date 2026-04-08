@@ -123,6 +123,18 @@ docker-compose down -v && docker-compose up --build
 
 ---
 
+## 📖 Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [Architecture](./docs/architecture.md) | System design, folder structure, request lifecycle, key decisions |
+| [Agents](./docs/agents.md) | Agent flow diagrams — codebase Q&A, PR review, debug, test, team mode, architecture graph |
+| [Database](./docs/database.md) | DB models, pgvector search, schema |
+| [API](./docs/api.md) | All endpoints with request/response examples |
+| [Decisions](./docs/decisions.md) | Why pgvector, Groq, LangGraph, SSE, and other key choices |
+
+---
+
 ## 🆘 Troubleshooting
 
 **Port already in use**
