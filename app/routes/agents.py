@@ -38,6 +38,7 @@ from app.schemas.agents import TeamModeRequest, TeamModeResponse
 from fastapi.responses import StreamingResponse
 from app.models.team_mode_history import TeamModeHistory
 from app.services.agents.architecture import analyze_architecture
+from app.services.agents.repo_intelligence import get_repo_intelligence
 import asyncio
 import json
 
@@ -799,6 +800,41 @@ async def get_architecture(
         raise AppError(
             code        = "ARCHITECTURE_ERROR",
             message     = f"Failed to analyze architecture: {e}",
+            status_code = 500,
+            details     = {"error": str(e)},
+        ) from e
+    
+
+# repo intelligence
+@router.get("/repo-intelligence")
+async def repo_intelligence(
+    token: str,
+    owner: str,
+    repo:  str,
+    since: str, 
+    until: str,  
+    db: Session = Depends(get_db),
+):
+    user_id = get_current_user_id(token)
+    user    = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise UserNotFoundError(user_id=user_id)
+
+    try:
+        result = await get_repo_intelligence(
+            owner        = owner,
+            repo         = repo,
+            access_token = user.access_token,
+            since        = since,
+            until        = until,
+        )
+        return result
+    except AppError:
+        raise
+    except Exception as e:
+        raise AppError(
+            code        = "REPO_INTELLIGENCE_ERROR",
+            message     = f"Failed to fetch repo intelligence: {e}",
             status_code = 500,
             details     = {"error": str(e)},
         ) from e
