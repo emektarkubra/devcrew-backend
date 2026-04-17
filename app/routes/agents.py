@@ -293,18 +293,21 @@ async def debug_history(payload: DebugHistoryRequest, db: Session = Depends(get_
         )
 
         return [
-            {
-                "error":         h.error,
-                "rootCause":     h.root_cause,
-                "severity":      h.severity,
-                "affectedFiles": h.affected_files,
-                "issues":        h.issues or [],
-                "explanation":   h.explanation,
-                "resolved":      h.resolved,
-                "timeAgo":       h.created_at,
-            }
-            for h in history
-        ]
+        {
+            "error":         h.error,
+            "rootCause":     h.root_cause,
+            "severity":      h.severity,
+            "affectedFiles": [
+                f["path"] if isinstance(f, dict) else f
+                for f in (h.affected_files or [])
+            ],
+            "issues":        h.issues or [],
+            "explanation":   h.explanation,
+            "resolved":      h.resolved,
+            "timeAgo":       h.created_at,
+        }
+        for h in history
+]
     except AppError:
         raise
     except Exception as e:

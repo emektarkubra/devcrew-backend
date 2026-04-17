@@ -14,13 +14,23 @@ from app.models.debug_history import DebugHistory
 from app.services.agents.pr_review import find_and_replace
 
 llm = ChatGroq(
-    model_name="llama-3.1-8b-instant",
+    model_name="llama-3.3-70b-versatile",
     temperature=0,
     api_key=settings.GROQ_API_KEY,
 )
 
 chain     = DEBUG_PROMPT     | llm | StrOutputParser()
 fix_chain = DEBUG_FIX_PROMPT | llm | StrOutputParser()
+
+
+def normalize_path(path: str) -> str:
+    """Remove container path prefixes to get the repo-relative path."""
+    path = path.lstrip("/")
+    if path.startswith("app/app/"):
+        path = path[len("app/app/"):]
+    elif path.startswith("app/"):
+        pass
+    return path
 
 
 async def debug_error(
@@ -42,7 +52,7 @@ async def debug_error(
             CodeEmbedding.repo    == repo_full,
         )
         .order_by(CodeEmbedding.embedding.cosine_distance(query_vector))
-        .limit(5)
+        .limit(8)
         .all()
     )
 
@@ -62,7 +72,7 @@ async def debug_error(
                 CodeEmbedding.repo    == repo_full,
             )
             .order_by(CodeEmbedding.embedding.cosine_distance(query_vector))
-            .limit(5)
+            .limit(8)
             .all()
         )
 
@@ -100,10 +110,9 @@ async def debug_error(
 
     raw_issues = analysis.get("issues", [])
 
-    # affected_file'dan tam path'i bul
     issues_with_code = []
     for issue in raw_issues:
-        file_name = issue.get("affected_file", "")
+        file_name = normalize_path(issue.get("affected_file", ""))
 
         chunk = (
             db.query(CodeEmbedding)
@@ -116,6 +125,7 @@ async def debug_error(
         )
 
         full_path = chunk.file_path if chunk else file_name
+        full_path = normalize_path(full_path)
 
         chunks = (
             db.query(CodeEmbedding)
@@ -131,12 +141,15 @@ async def debug_error(
         issues_with_code.append({
             "title":         issue.get("title", ""),
             "description":   issue.get("description", ""),
-            "affectedFile":  {"path": full_path, "name": full_path.split("/")[-1], "code": code[:500]},
+            "affectedFile":  {
+                "path": full_path,
+                "name": full_path.split("/")[-1],
+                "code": code[:500],
+            },
             "fixSuggestion": issue.get("fix_suggestion", ""),
         })
 
-    # affected_files — unique dosyalar
-    seen = set()
+    seen           = set()
     affected_files = []
     for issue in issues_with_code:
         path = issue["affectedFile"]["path"]
@@ -147,7 +160,7 @@ async def debug_error(
     db.add(DebugHistory(
         user_id        = user_id,
         repo           = repo_full,
-        error          = error[:500],
+        error          = error[:2000],
         root_cause     = analysis.get("root_cause", ""),
         severity       = analysis.get("severity", "unknown"),
         affected_files = affected_files,
@@ -167,11 +180,11 @@ async def debug_error(
 
 
 async def apply_debug_fix_and_open_pr(
-    access_token:   str,
-    owner:          str,
-    repo:           str,
-    issues:         list,
-    error:          str,
+    access_token: str,
+    owner:        str,
+    repo:         str,
+    issues:       list,
+    error:        str,
 ) -> dict:
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -234,7 +247,7 @@ async def apply_debug_fix_and_open_pr(
 
     for issue in issues:
         file_info      = issue.get("affectedFile", {})
-        file_path      = file_info.get("path", "")
+        file_path      = normalize_path(file_info.get("path", ""))
         fix_suggestion = issue.get("fixSuggestion", "")
 
         if not file_path:
@@ -259,7 +272,7 @@ async def apply_debug_fix_and_open_pr(
         current_content = base64.b64decode(file_data["content"]).decode("utf-8")
 
         try:
-            raw     = fix_chain.invoke({
+            raw = fix_chain.invoke({
                 "file_path":      file_path,
                 "file_content":   current_content[:5000],
                 "error":          error[:500],
@@ -315,7 +328,10 @@ async def apply_debug_fix_and_open_pr(
             details     = {"failed": failed},
         )
 
-    issue_summary = "\n".join([f"- {i.get('title', '')}: {i.get('fixSuggestion', '')}" for i in issues])
+    issue_summary = "\n".join([
+        f"- {i.get('title', '')}: {i.get('fixSuggestion', '')}"
+        for i in issues
+    ])
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         pr_resp = await client.post(

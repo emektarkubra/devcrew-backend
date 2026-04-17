@@ -202,13 +202,14 @@ Related Code Context (retrieved from the actual repository):
 
 Analysis rules:
 - Base your analysis ONLY on the error message and the code context provided
-- Do NOT invent file names, function names, or line numbers that are not in the context
-- "affected_files" in each issue must ONLY contain files visible in the code context
+- If the error contains a stacktrace, extract the exact file paths and line numbers from it
+- "affected_file" must be the FULL file path exactly as it appears in the stacktrace (e.g. src/pages/PRReview/index.tsx), NOT just the filename
+- If the file from the stacktrace is not in the code context, still use the path from the stacktrace
+- Do NOT invent file names, function names, or line numbers that are not in the error or context
 - "severity" must reflect actual impact: critical (app crash/data loss), high (feature broken), medium (degraded behavior), low (minor issue)
-- "fix_suggestion" must be concrete with actual code snippets from the context
+- "fix_suggestion" must be concrete with actual code snippets when possible
 - Do NOT hallucinate fixes for code you cannot see
 - If there are multiple distinct bugs, report each as a separate issue
-- If there is only one bug, return a single issue
 
 Return ONLY valid JSON, no markdown, no explanation:
 {{
@@ -219,7 +220,7 @@ Return ONLY valid JSON, no markdown, no explanation:
         {{
             "title": "concise issue title",
             "description": "clear explanation of this specific bug",
-            "affected_file": "filename only (e.g. App.tsx)",
+            "affected_file": "full file path from stacktrace (e.g. src/pages/PRReview/index.tsx)",
             "fix_suggestion": "concrete fix with code example"
         }}
     ]
