@@ -166,7 +166,7 @@ async def search_repos(
         elif type == "private":
             base_query = base_query.filter(Repo.is_private.is_(True))
         elif type == "forks":
-            base_query = base_query.filter(Repo.fork.is_(True))
+            base_query = base_query.filter(Repo.forks_count > 0)
 
         if language != "all":
             base_query = base_query.filter(

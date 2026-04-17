@@ -34,7 +34,7 @@ async def codebase_qa(query: str, owner: str, repo: str, user_id: int, db: Sessi
             CodeEmbedding.repo    == repo_full,
         )
         .order_by(CodeEmbedding.embedding.cosine_distance(query_vector))
-        .limit(10)
+        .limit(20)
         .all()
     )
 

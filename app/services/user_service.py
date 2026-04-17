@@ -135,25 +135,37 @@ async def fetch_repo_prs(access_token: str, owner: str, repo: str) -> list:
                     "sort":     "updated",
                 },
             )
+
         if resp.status_code == 401:
             raise AuthAppError(
-                code="GITHUB_UNAUTHORIZED",
-                message="Invalid or expired GitHub token.",
+                code    = "GITHUB_UNAUTHORIZED",
+                message = "Invalid or expired GitHub token.",
             )
         if resp.status_code == 404:
             raise AppError(
-                code="REPO_NOT_FOUND",
-                message="Not found repository.",
-                status_code=404,
-                details={"owner": owner, "repo": repo},
+                code        = "REPO_NOT_FOUND",
+                message     = "Not found repository.",
+                status_code = 404,
+                details     = {"owner": owner, "repo": repo},
             )
+        if resp.status_code not in (200, 201):
+            raise AppError(
+                code        = "GITHUB_PRS_ERROR",
+                message     = "An error occurred while fetching PR list.",
+                status_code = resp.status_code,
+                details     = {"error": resp.text[:200], "status": resp.status_code},
+            )
+        if not resp.text or not resp.text.strip():
+            return []
+
         return resp.json()
+
     except (AuthAppError, AppError):
         raise
     except Exception as e:
         raise AppError(
-            code="GITHUB_PRS_ERROR",
-            message="An error occurred while fetching PR list.",
-            status_code=500,
-            details={"error": str(e)},
+            code        = "GITHUB_PRS_ERROR",
+            message     = "An error occurred while fetching PR list.",
+            status_code = 500,
+            details     = {"error": str(e)},
         )

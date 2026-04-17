@@ -164,23 +164,25 @@ Title: {issue_title}
 Description: {issue_description}
 Suggestion: {suggestion}
 
-Rules:
-- "original" must be copied CHARACTER FOR CHARACTER from the file content
-- "original" must be the smallest unique exact snippet that can be safely replaced
-- "fixed" must be the minimal change needed to resolve the issue
-- Do NOT rewrite unrelated parts of the file
-- Do NOT reformat unrelated lines
-- Preserve existing indentation, spacing, and line breaks as much as possible
-- Do NOT change imports, hooks, state, handlers, or JSX structure unless required by the issue
-- Do NOT escape HTML characters
-- Do NOT truncate with "..."
-- If no safe automatic fix is possible, return empty strings for original and fixed
+CRITICAL RULES:
+- "original" must be copied CHARACTER FOR CHARACTER from the FILE CONTENT above, not from memory or the issue description
+- Find the EXACT problematic lines in the file content and copy them verbatim
+- "original" must be the smallest unique snippet — ideally 1-3 lines
+- "fixed" must be the minimal change to resolve the issue
+- Preserve ALL existing indentation exactly as it appears in the file
+- Do NOT rewrite unrelated parts
+- Do NOT escape quotes or special characters in the JSON — use plain text only
+- Do NOT add markdown or code blocks
+- Do NOT use semicolons to join multiple statements — use actual line breaks (\\n) in the JSON string
+- If the issue is a missing check or validation, add it minimally across multiple lines
+- If you cannot find the exact problematic lines in the file content, return empty strings for both "original" and "fixed"
+- The JSON must be valid — avoid non-ASCII characters, special dashes, or any character that could break JSON parsing
 
-Return ONLY valid JSON:
+Return ONLY valid JSON, no other text:
 {{
-  "original": "exact code copied from file",
-  "fixed": "corrected exact replacement",
-  "explanation": "one sentence explaining the minimal change"
+  "original": "exact lines copied verbatim from file content",
+  "fixed": "minimal corrected replacement",
+  "explanation": "one sentence describing the change"
 }}
 """,
     input_variables=["file_path", "file_content", "issue_title", "issue_description", "suggestion"]

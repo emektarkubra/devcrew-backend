@@ -162,27 +162,42 @@ class CheckIndexResponse(BaseModel):
     indexed:    bool
     file_count: int
 
+class DiffLine(BaseModel):
+    type:    str
+    content: str
+
+class PRFile(BaseModel):
+    name:    str
+    path:    str
+    changes: str
+    risk:    str
+
 class PRReviewResponse(BaseModel):
-    pr:           str
-    title:        str
-    riskScore:    int
-    issueCount:   int
-    issues:       List[Any] = []
-    diff:         Optional[str] = None
-    files:        List[str] = []
-    summary:      Optional[str] = None
-    changedFiles: int = 0
+    pr:           Optional[str]      = None
+    title:        Optional[str]      = None
+    number:       Optional[str]      = None
+    author:       Optional[str]      = None
+    riskScore:    int                = 0
+    issueCount:   int                = 0
+    criticalIssues: int              = 0
+    issues:       List[Any]          = []
+    diff:         List[DiffLine]     = []
+    files:        List[PRFile]       = []
+    summary:      Optional[str]      = None
+    changedFiles: int                = 0
+    timeAgo:      Optional[Any]      = None
 
 class PRHistoryItemResponse(BaseModel):
-    pr:           str
-    title:        Optional[str] = None
-    riskScore:    Optional[int] = None
-    issueCount:   Optional[int] = None
-    issues:       List[Any] = []
-    diff:         Optional[str] = None
-    files:        List[str] = []
-    summary:      Optional[str] = None
-    changedFiles: int = 0
+    pr:           Optional[str]      = None
+    title:        Optional[str]      = None
+    riskScore:    Optional[int]      = None
+    issueCount:   Optional[int]      = None
+    criticalIssues: int              = 0
+    issues:       List[Any]          = []
+    diff:         List[Any]          = []
+    files:        List[Any]          = []
+    summary:      Optional[str]      = None
+    changedFiles: int                = 0
     timeAgo:      datetime
 
     class Config:
@@ -273,7 +288,7 @@ class ApplyFixesResponse(BaseModel):
     fixes: List[Any] = []
 
 class ApplyFixesToBranchResponse(BaseModel):
-    message:      Optional[str] = None
-    branch:       Optional[str] = None
-    committed:    Optional[int] = None
-    skipped:      Optional[int] = None
+    branch:   Optional[str]       = None
+    applied:  List[str]           = []
+    failed:   List[Any]           = []
+    message:  Optional[str]       = None

@@ -808,11 +808,10 @@ async def get_architecture(
 # repo intelligence
 @router.get("/repo-intelligence")
 async def repo_intelligence(
-    token: str,
-    owner: str,
-    repo:  str,
-    since: str, 
-    until: str,  
+    token:  str,
+    owner:  str,
+    repo:   str,
+    period: str = "30d",
     db: Session = Depends(get_db),
 ):
     user_id = get_current_user_id(token)
@@ -825,8 +824,7 @@ async def repo_intelligence(
             owner        = owner,
             repo         = repo,
             access_token = user.access_token,
-            since        = since,
-            until        = until,
+            period       = period,
         )
         return result
     except AppError:
@@ -834,7 +832,7 @@ async def repo_intelligence(
     except Exception as e:
         raise AppError(
             code        = "REPO_INTELLIGENCE_ERROR",
-            message     = f"Failed to fetch repo intelligence: {e}",
+            message     = "Failed to fetch repo intelligence.",
             status_code = 500,
             details     = {"error": str(e)},
         ) from e

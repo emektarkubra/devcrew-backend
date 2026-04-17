@@ -76,15 +76,19 @@ async def fetch_repo_files(access_token: str, owner: str, repo: str, branch: str
             )
         
 
-        excludedFiles = {'.venv', 'venv', 'node_modules', '__pycache__', '.git', 'dist', 'build'}
+        excludedFiles = {
+            '.venv', 'venv', 'node_modules', '__pycache__',
+            '.git', 'dist', 'build',
+            'alembic', 'docs', 'migrations',
+        }
 
         tree = resp.json().get("tree", [])
-    
+
         return [
             f for f in tree
             if f["type"] == "blob"
             and f["path"].endswith(SUPPORTED_EXTENSIONS)
-            and not any(f["path"].startswith(file + '/') for file in excludedFiles)
+            and not any(part in excludedFiles for part in f["path"].split('/'))
         ]
     except AppError:
         raise
@@ -174,13 +178,13 @@ async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_to
                     total_chunks += 1
                 except Exception as e:
                     print(f"EMBED ERROR: {file['path']} — {e}")
-                    continue  # tek chunk hata verse bile devam et
+                    continue 
 
             print(f"✓ {file['path']} — {len(chunks)} chunks")
 
         except Exception as e:
             print(f"FILE ERROR: {file['path']} — {e}")
-            continue  # tek dosya hata verse bile devam et
+            continue 
 
     db.commit()
     print(f"INDEX DONE: {total_chunks} chunks")
