@@ -10,52 +10,45 @@ from app.services.repo_service import fetch_file_content
 from app.core.prompts import TEST_GENERATOR_PROMPT
 
 llm = ChatGroq(
-    model_name    = "llama-3.3-70b-versatile",
-    temperature   = 0,
-    api_key       = settings.GROQ_API_KEY,
+    model_name  = "llama-3.3-70b-versatile",
+    temperature = 0,
+    api_key     = settings.GROQ_API_KEY,
 )
 
 chain = TEST_GENERATOR_PROMPT | llm | StrOutputParser()
 
 
-# clean LLM output to be parseable JSON
 def clean_llm_json(raw: str) -> str:
-
-    # remove code block markers and trim whitespace
     cleaned = raw.strip()
-    cleaned = re.sub(r'^```json\s*', '', cleaned)
-    cleaned = re.sub(r'^```\s*',     '', cleaned)
-    cleaned = re.sub(r'\s*```$',     '', cleaned)
-    cleaned = cleaned.strip()
+    cleaned = re.sub(r'^```json\s*', '', cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r'^```\s*',     '', cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r'\s*```$',     '', cleaned, flags=re.MULTILINE)
+    return cleaned.strip()
 
-    # escape double quotes, backslashes, and control characters in all string values
-    def escape_string_content(match: re.Match) -> str:
-        content = match.group(1)
-        content = content.replace('\\', '\\\\')  
-        content = content.replace('"',  '\\"')  
-        content = content.replace('\n', '\\n')    
-        content = content.replace('\r', '\\r')   
-        content = content.replace('\t', '\\t')   
-        content = content.replace('\b', '\\b')
-        content = content.replace('\f', '\\f')
-        # get back to original \n, \t, \r, \" after escaping backslashes
-        content = content.replace('\\\\n',  '\\n')
-        content = content.replace('\\\\t',  '\\t')
-        content = content.replace('\\\\r',  '\\r')
-        content = content.replace('\\\\"',  '\\"')
-        content = content.replace('\\\\\\\\', '\\\\')
-        return f'"{content}"'
 
-    # scan for all string values and escape them
-    cleaned = re.sub(
-        r'"((?:[^"\\]|\\.)*)"',
-        escape_string_content,
-        cleaned,
-        flags=re.DOTALL,
-    )
+def try_parse_json(raw: str) -> dict | None:
+    # 1. direkt parse
+    try:
+        return json.loads(raw)
+    except Exception:
+        pass
 
-    return cleaned
+    # 2. backtick temizle
+    try:
+        cleaned = raw.replace("```json", "").replace("```", "").strip()
+        return json.loads(cleaned)
+    except Exception:
+        pass
 
+    # 3. ilk { ile son } arasını bul
+    try:
+        start = raw.index("{")
+        end   = raw.rindex("}") + 1
+        return json.loads(raw[start:end])
+    except Exception:
+        pass
+
+    return None
 
 
 async def generate_tests(
@@ -78,7 +71,6 @@ async def generate_tests(
             details     = {"target": target, "repo": f"{owner}/{repo}"},
         )
 
-    # dosya büyükse chunk'lara böl, her chunk için ayrı test üret
     MAX_CHARS = 6000
     if len(context) > MAX_CHARS:
         from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -87,26 +79,24 @@ async def generate_tests(
     else:
         chunks = [context]
 
-    all_tests        = []
-    total_unit       = 0
-    total_edge       = 0
-    total_integration = 0
-    total_coverage   = 0
+    all_tests          = []
+    total_unit         = 0
+    total_edge         = 0
+    total_integration  = 0
+    total_coverage     = 0
 
-    for i, chunk in enumerate(chunks[:3]):  # max 3 chunk — fazlası çok yavaş olur
+    for chunk in chunks[:3]:
         try:
             answer = chain.invoke({
                 "target":    target,
                 "framework": framework,
                 "context":   chunk,
             })
-        except Exception as e:
-            continue  # bir chunk hata verse bile devam et
-
-        try:
-            cleaned = clean_llm_json(answer)
-            result  = json.loads(cleaned)
         except Exception:
+            continue
+
+        result = try_parse_json(answer)
+        if not result:
             continue
 
         chunk_tests        = result.get("tests", [])
@@ -123,16 +113,7 @@ async def generate_tests(
             status_code = 500,
         )
 
-    avg_coverage = total_coverage // len(chunks[:3])
-
-    result = {
-        "totalTests":       len(all_tests),
-        "coverage":         avg_coverage,
-        "unitCount":        total_unit,
-        "edgeCount":        total_edge,
-        "integrationCount": total_integration,
-        "tests":            all_tests,
-    }
+    avg_coverage = total_coverage // max(len(chunks[:3]), 1)
 
     merged_code = merge_tests(all_tests, target)
 
@@ -156,7 +137,6 @@ async def generate_tests(
             details     = {"error": str(e)},
         ) from e
 
-
     return {
         "target":           target,
         "framework":        framework,
@@ -170,24 +150,20 @@ async def generate_tests(
     }
 
 
-
 def merge_tests(tests: list, target: str) -> str:
-    """Her testin code field'ından importları dedupe edip tek dosya üretir."""
     if not tests:
         return ""
 
     ext       = target.split('.')[-1]
     base_name = target.split('/')[-1].replace(f'.{ext}', '')
 
-    # importları ilk testten al
-    first_code    = tests[0].get('code', '')
-    import_lines  = [
+    first_code   = tests[0].get('code', '')
+    import_lines = [
         line for line in first_code.split('\n')
         if line.strip().startswith('import')
     ]
-    import_block  = '\n'.join(import_lines)
+    import_block = '\n'.join(import_lines)
 
-    # her testten it() bloklarını çıkar
     it_blocks = []
     for test in tests:
         code  = test.get('code', '')
@@ -209,10 +185,8 @@ def merge_tests(tests: list, target: str) -> str:
             if in_it:
                 block.append(line)
                 depth += line.count('{') - line.count('}')
-                # Python için
                 if trimmed.startswith("def test_") and depth == 0 and len(block) > 1:
                     in_it = False
-                # JS için
                 elif depth <= 0 and not trimmed.startswith("def test_"):
                     in_it = False
                     depth = 0
@@ -222,7 +196,6 @@ def merge_tests(tests: list, target: str) -> str:
 
     it_content = '\n\n'.join(it_blocks)
 
-    # Python ise describe wrapper yok
     if ext == 'py':
         return f"{import_block}\n\n{it_content}"
 
