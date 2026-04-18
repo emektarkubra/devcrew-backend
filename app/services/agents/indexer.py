@@ -11,12 +11,15 @@ from app.core.config import settings
 
 # split text
 def chunk_text(text: str, chunk_size: int = 500) -> list[str]:
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=100)
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size, chunk_overlap=100
+    )
     return text_splitter.split_text(text)
 
 
 # embedding (lazy load)
 _embedding_model = None
+
 
 def get_embedding_model():
     global _embedding_model
@@ -27,6 +30,7 @@ def get_embedding_model():
             encode_kwargs={"normalize_embeddings": True},
         )
     return _embedding_model
+
 
 def get_embedding(text: str) -> list[float]:
     return get_embedding_model().embed_query(text)
@@ -60,7 +64,9 @@ async def get_default_branch(access_token: str, owner: str, repo: str) -> str:
 
 
 # fetch repo file list
-async def fetch_repo_files(access_token: str, owner: str, repo: str, branch: str) -> list[dict]:
+async def fetch_repo_files(
+    access_token: str, owner: str, repo: str, branch: str
+) -> list[dict]:
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
@@ -74,21 +80,28 @@ async def fetch_repo_files(access_token: str, owner: str, repo: str, branch: str
                 status_code=404,
                 details={"repo": f"{owner}/{repo}", "branch": branch},
             )
-        
 
         excludedFiles = {
-            '.venv', 'venv', 'node_modules', '__pycache__',
-            '.git', 'dist', 'build',
-            'alembic', 'docs', 'migrations',
+            ".venv",
+            "venv",
+            "node_modules",
+            "__pycache__",
+            ".git",
+            "dist",
+            "build",
+            "alembic",
+            "docs",
+            "migrations",
         }
 
         tree = resp.json().get("tree", [])
 
         return [
-            f for f in tree
+            f
+            for f in tree
             if f["type"] == "blob"
             and f["path"].endswith(SUPPORTED_EXTENSIONS)
-            and not any(part in excludedFiles for part in f["path"].split('/'))
+            and not any(part in excludedFiles for part in f["path"].split("/"))
         ]
     except AppError:
         raise
@@ -102,7 +115,9 @@ async def fetch_repo_files(access_token: str, owner: str, repo: str, branch: str
 
 
 # fetch file content
-async def fetch_file_content(access_token: str, owner: str, repo: str, path: str, branch: str) -> str:
+async def fetch_file_content(
+    access_token: str, owner: str, repo: str, path: str, branch: str
+) -> str:
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:  # ← timeout ekle
             resp = await client.get(
@@ -111,87 +126,93 @@ async def fetch_file_content(access_token: str, owner: str, repo: str, path: str
             )
         if resp.status_code == 404:
             raise AppError(
-                code        = "FILE_NOT_FOUND",
-                message     = f"{path} file not found.",
-                status_code = 404,
-                details     = {"path": path},
+                code="FILE_NOT_FOUND",
+                message=f"{path} file not found.",
+                status_code=404,
+                details={"path": path},
             )
         if resp.status_code != 200:
             raise AppError(
-                code        = "FILE_FETCH_ERROR",
-                message     = f"GitHub returned {resp.status_code} for {path}",
-                status_code = resp.status_code,
-                details     = {"path": path, "status": resp.status_code},
+                code="FILE_FETCH_ERROR",
+                message=f"GitHub returned {resp.status_code} for {path}",
+                status_code=resp.status_code,
+                details={"path": path, "status": resp.status_code},
             )
         data = resp.json()
         if "content" not in data:
             raise AppError(
-                code        = "FILE_NO_CONTENT",
-                message     = f"{path} has no content field (may be a directory or submodule).",
-                status_code = 400,
-                details     = {"path": path},
+                code="FILE_NO_CONTENT",
+                message=f"{path} has no content field (may be a directory or submodule).",
+                status_code=400,
+                details={"path": path},
             )
         return base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
     except AppError:
         raise
     except Exception as e:
         raise AppError(
-            code        = "FILE_FETCH_ERROR",
-            message     = "An error occurred while fetching file content.",
-            status_code = 500,
-            details     = {"path": path, "error": str(e)},
+            code="FILE_FETCH_ERROR",
+            message="An error occurred while fetching file content.",
+            status_code=500,
+            details={"path": path, "error": str(e)},
         )
 
 
 # repo index
-async def index_repo(owner: str, repo: str, db: Session, user_id: int, access_token: str):
+async def index_repo(
+    owner: str, repo: str, db: Session, user_id: int, access_token: str
+):
     repo_full = f"{owner}/{repo}"
 
     try:
         db.query(CodeEmbedding).filter(
             CodeEmbedding.user_id == user_id,
-            CodeEmbedding.repo    == repo_full,
+            CodeEmbedding.repo == repo_full,
         ).delete()
         db.commit()
     except Exception:
         raise RepoIndexError(repo=repo_full)
 
-    branch       = await get_default_branch(access_token, owner, repo)
-    files        = await fetch_repo_files(access_token, owner, repo, branch)
+    branch = await get_default_branch(access_token, owner, repo)
+    files = await fetch_repo_files(access_token, owner, repo, branch)
     total_chunks = 0
 
     for file in files:
         try:
-            content = await fetch_file_content(access_token, owner, repo, file["path"], branch)
-            chunks  = chunk_text(content)
+            content = await fetch_file_content(
+                access_token, owner, repo, file["path"], branch
+            )
+            chunks = chunk_text(content)
 
             for chunk in chunks:
                 try:
                     vector = get_embedding(f"passage: {chunk}")
-                    db.add(CodeEmbedding(
-                        user_id    = user_id,
-                        repo       = repo_full,
-                        file_path  = file["path"],
-                        chunk_text = chunk,
-                        embedding  = vector,
-                    ))
+                    db.add(
+                        CodeEmbedding(
+                            user_id=user_id,
+                            repo=repo_full,
+                            file_path=file["path"],
+                            chunk_text=chunk,
+                            embedding=vector,
+                        )
+                    )
                     total_chunks += 1
                 except Exception as e:
                     print(f"EMBED ERROR: {file['path']} — {e}")
-                    continue 
+                    continue
 
             print(f"✓ {file['path']} — {len(chunks)} chunks")
 
         except Exception as e:
             print(f"FILE ERROR: {file['path']} — {e}")
-            continue 
+            continue
 
     db.commit()
     print(f"INDEX DONE: {total_chunks} chunks")
 
     return {
-        "status":        "success",
-        "repo":          repo_full,
+        "status": "success",
+        "repo": repo_full,
         "files_indexed": len(files),
-        "total_chunks":  total_chunks,
+        "total_chunks": total_chunks,
     }
