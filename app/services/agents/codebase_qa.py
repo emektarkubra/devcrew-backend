@@ -23,18 +23,20 @@ suggestion_chain = CODEBASE_SUGGESTION_PROMPT | llm | StrOutputParser()
 
 
 # codebase qa
-async def codebase_qa(query: str, owner: str, repo: str, user_id: int, db: Session) -> dict:
-    repo_full    = f"{owner}/{repo}"
+async def codebase_qa(
+    query: str, owner: str, repo: str, user_id: int, db: Session
+) -> dict:
+    repo_full = f"{owner}/{repo}"
     query_vector = get_embedding(f"query: {query}")
 
     results = (
         db.query(CodeEmbedding)
         .filter(
             CodeEmbedding.user_id == user_id,
-            CodeEmbedding.repo    == repo_full,
+            CodeEmbedding.repo == repo_full,
         )
         .order_by(CodeEmbedding.embedding.cosine_distance(query_vector))
-        .limit(10)
+        .limit(20)
         .all()
     )
 
@@ -45,30 +47,31 @@ async def codebase_qa(query: str, owner: str, repo: str, user_id: int, db: Sessi
     readme = (
         db.query(CodeEmbedding)
         .filter(
-            CodeEmbedding.user_id   == user_id,
-            CodeEmbedding.repo      == repo_full,
+            CodeEmbedding.user_id == user_id,
+            CodeEmbedding.repo == repo_full,
             CodeEmbedding.file_path.ilike("%readme%"),
         )
         .first()
     )
 
-    context = "\n\n".join([
-        f"### File: {r.file_path}\n```\n{r.chunk_text}\n```"
-        for r in results
-    ])
+    context = "\n\n".join(
+        [f"### File: {r.file_path}\n```\n{r.chunk_text}\n```" for r in results]
+    )
 
     if readme and readme not in results:
         context = f"### File: README\n```\n{readme.chunk_text}\n```\n\n" + context
 
-    answer = chain.invoke({
-        "context":  context,
-        "question": query,
-    })
+    answer = chain.invoke(
+        {
+            "context": context,
+            "question": query,
+        }
+    )
 
     suggestions = []
     try:
-        raw         = suggestion_chain.invoke({"context": context, "question": query})
-        cleaned     = raw.strip().replace("```json", "").replace("```", "")
+        raw = suggestion_chain.invoke({"context": context, "question": query})
+        cleaned = raw.strip().replace("```json", "").replace("```", "")
         suggestions = json.loads(cleaned)
         if not isinstance(suggestions, list):
             suggestions = []
@@ -77,18 +80,20 @@ async def codebase_qa(query: str, owner: str, repo: str, user_id: int, db: Sessi
 
     files = list({r.file_path for r in results})
 
-    db.add(CodeQueryHistory(
-        user_id    = user_id,
-        repo       = repo_full,
-        query      = query,
-        response   = answer,
-        file_count = len(files),
-        files      = files,
-    ))
+    db.add(
+        CodeQueryHistory(
+            user_id=user_id,
+            repo=repo_full,
+            query=query,
+            response=answer,
+            file_count=len(files),
+            files=files,
+        )
+    )
     db.commit()
 
     return {
-        "answer":      answer,
-        "files":       files,
+        "answer": answer,
+        "files": files,
         "suggestions": suggestions,
     }

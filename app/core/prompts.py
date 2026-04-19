@@ -29,7 +29,7 @@ Instructions:
 - Keep the tone conversational but technical — like a senior developer explaining to a colleague
 
 Answer:""",
-    input_variables=["context", "question"]
+    input_variables=["context", "question"],
 )
 
 
@@ -49,7 +49,7 @@ Current Question:
 {question}
 
 JSON array:""",
-    input_variables=["context", "question"]
+    input_variables=["context", "question"],
 )
 
 
@@ -147,7 +147,7 @@ Risk score guidelines:
 - 61-80: serious problems, merge should be blocked
 - 81-100: critical problems, unsafe to merge
 """,
-    input_variables=["title", "author", "changed_files", "diff"]
+    input_variables=["title", "author", "changed_files", "diff"],
 )
 
 
@@ -164,26 +164,34 @@ Title: {issue_title}
 Description: {issue_description}
 Suggestion: {suggestion}
 
-Rules:
-- "original" must be copied CHARACTER FOR CHARACTER from the file content
-- "original" must be the smallest unique exact snippet that can be safely replaced
-- "fixed" must be the minimal change needed to resolve the issue
-- Do NOT rewrite unrelated parts of the file
-- Do NOT reformat unrelated lines
-- Preserve existing indentation, spacing, and line breaks as much as possible
-- Do NOT change imports, hooks, state, handlers, or JSX structure unless required by the issue
-- Do NOT escape HTML characters
-- Do NOT truncate with "..."
-- If no safe automatic fix is possible, return empty strings for original and fixed
+CRITICAL RULES:
+- "original" must be copied CHARACTER FOR CHARACTER from the FILE CONTENT above, not from memory or the issue description
+- Find the EXACT problematic lines in the file content and copy them verbatim
+- "original" must be the smallest unique snippet — ideally 1-3 lines
+- "fixed" must be the minimal change to resolve the issue
+- Preserve ALL existing indentation exactly as it appears in the file
+- Do NOT rewrite unrelated parts
+- Do NOT escape quotes or special characters in the JSON — use plain text only
+- Do NOT add markdown or code blocks
+- Do NOT use semicolons to join multiple statements — use actual line breaks (\\n) in the JSON string
+- If the issue is a missing check or validation, add it minimally across multiple lines
+- If you cannot find the exact problematic lines in the file content, return empty strings for both "original" and "fixed"
+- The JSON must be valid — avoid non-ASCII characters, special dashes, or any character that could break JSON parsing
 
-Return ONLY valid JSON:
+Return ONLY valid JSON, no other text:
 {{
-  "original": "exact code copied from file",
-  "fixed": "corrected exact replacement",
-  "explanation": "one sentence explaining the minimal change"
+  "original": "exact lines copied verbatim from file content",
+  "fixed": "minimal corrected replacement",
+  "explanation": "one sentence describing the change"
 }}
 """,
-    input_variables=["file_path", "file_content", "issue_title", "issue_description", "suggestion"]
+    input_variables=[
+        "file_path",
+        "file_content",
+        "issue_title",
+        "issue_description",
+        "suggestion",
+    ],
 )
 
 
@@ -200,13 +208,14 @@ Related Code Context (retrieved from the actual repository):
 
 Analysis rules:
 - Base your analysis ONLY on the error message and the code context provided
-- Do NOT invent file names, function names, or line numbers that are not in the context
-- "affected_files" in each issue must ONLY contain files visible in the code context
+- If the error contains a stacktrace, extract the exact file paths and line numbers from it
+- "affected_file" must be the FULL file path exactly as it appears in the stacktrace (e.g. src/pages/PRReview/index.tsx), NOT just the filename
+- If the file from the stacktrace is not in the code context, still use the path from the stacktrace
+- Do NOT invent file names, function names, or line numbers that are not in the error or context
 - "severity" must reflect actual impact: critical (app crash/data loss), high (feature broken), medium (degraded behavior), low (minor issue)
-- "fix_suggestion" must be concrete with actual code snippets from the context
+- "fix_suggestion" must be concrete with actual code snippets when possible
 - Do NOT hallucinate fixes for code you cannot see
 - If there are multiple distinct bugs, report each as a separate issue
-- If there is only one bug, return a single issue
 
 Return ONLY valid JSON, no markdown, no explanation:
 {{
@@ -217,13 +226,13 @@ Return ONLY valid JSON, no markdown, no explanation:
         {{
             "title": "concise issue title",
             "description": "clear explanation of this specific bug",
-            "affected_file": "filename only (e.g. App.tsx)",
+            "affected_file": "full file path from stacktrace (e.g. src/pages/PRReview/index.tsx)",
             "fix_suggestion": "concrete fix with code example"
         }}
     ]
 }}
 """,
-    input_variables=["error", "context"]
+    input_variables=["error", "context"],
 )
 
 
@@ -255,7 +264,7 @@ Rules:
     "fixed": "corrected code",
     "explanation": "what was fixed"
 }}""",
-    input_variables=["file_path", "file_content", "error", "fix_suggestion"]
+    input_variables=["file_path", "file_content", "error", "fix_suggestion"],
 )
 
 
@@ -310,7 +319,7 @@ Return ONLY valid JSON, no markdown, no explanation:
     ]
 }}
 """,
-    input_variables=["target", "framework", "context"]
+    input_variables=["target", "framework", "context"],
 )
 
 
@@ -325,15 +334,21 @@ CRITICAL ANTI-HALLUCINATION RULES:
 - If something is missing, OMIT it completely (do NOT guess)
 
 STRICT OUTPUT RULES:
-- DO NOT repeat the same endpoint or section
-- EACH endpoint must appear EXACTLY ONCE
+- DO NOT repeat the same endpoint, function, or section
+- EACH function/endpoint must appear EXACTLY ONCE
 - If duplicates are detected, MERGE them into one
+
+THIRD-PARTY LIBRARY RULES:
+- Do NOT document third-party library components or functions
+- Examples of what NOT to document: React, Ant Design, Material UI, Express built-ins, SQLAlchemy built-ins, FastAPI built-ins, any imported library component
+- ONLY document code that is DEFINED in THIS file — not imported from external packages
 
 FORBIDDEN:
 - "Not determinable from provided context"
 - Placeholder text
 - Repeated sections
 - Guessing request/response bodies
+- Documenting library components (Button, Card, Select, Text, Flex, etc.)
 
 INFERENCE RULE:
 - If endpoint structure is visible but partial, infer minimally from code
@@ -344,26 +359,7 @@ QUALITY BAR:
 - Prefer missing info over incorrect info
 """
 
-DOC_PROMPT = PromptTemplate(
-    input_variables=["context", "target", "task", "guard"],
-    template="""You are a senior software engineer writing documentation.
-
-{guard}
-
-## Code Context
-{context}
-
-## Target
-{target}
-
-## Task
-{task}
-
-Generate the documentation now:"""
-)
-
 TASK_PROMPT = {
-
     "function": """Generate detailed technical documentation for each function and class found in this file.
 
 For EACH function/method/class write:
@@ -385,8 +381,6 @@ PROJECT-AGNOSTIC RULES:
 - Include ALL exported functions, classes, and methods
 - If a function has no parameters or return value, say so explicitly
 - Do NOT invent usage examples — base them on the actual code""",
-
-
     "readme": """Generate a professional, complete README.md for this repository.
 
 Structure EXACTLY like this:
@@ -434,8 +428,6 @@ PROJECT-AGNOSTIC RULES:
 - Do NOT add sections you cannot fill from the code
 - AUTHENTICATION: Do NOT assume Keycloak, Auth0, Firebase, or any specific auth provider — read the actual auth implementation from the code. If it uses GitHub OAuth, say GitHub OAuth. If it uses a form login, say that.
 - ENVIRONMENT VARIABLES: Only include variables that are literally visible in .env.example, config files, or referenced in the code. Do NOT invent them.""",
-
-
     "api": """Generate complete API reference documentation.
 
 Structure EXACTLY like this:
@@ -534,8 +526,6 @@ FORMATTING RULES:
 - Write each section ONCE and move on
 - Never repeat content
 - Never add apologies, explanations or future promises""",
-
-
     "onboard": """Generate a developer onboarding guide for someone joining this project for the first time.
 
 Structure EXACTLY like this:
@@ -584,8 +574,6 @@ PROJECT-AGNOSTIC RULES:
 - Do NOT invent setup steps — only include what is visible in config/script files
 - If a section cannot be filled from the code, write "Not applicable for this project"
 - AUTHENTICATION: Do NOT assume any auth provider — read the actual implementation from the code""",
-
-
     "guide": """Create a USER GUIDE for END USERS of this application (not developers).
 Analyze the frontend code (React components, pages, routes) and describe what the user SEES and DOES.
 
@@ -642,8 +630,6 @@ PROJECT-AGNOSTIC RULES:
 - NEVER mention code, components, functions, props, or file names
 - Use plain language only: "Click the Generate button" not "invoke the handler"
 - If frontend files are not in the context, write: "Frontend code not available in the provided context" """,
-
-
     "arch": """Generate a comprehensive architecture document for this system.
 
 Structure EXACTLY like this:
@@ -690,8 +676,6 @@ PROJECT-AGNOSTIC RULES:
 - Do NOT invent data flows — trace only what is visible in imports and function calls
 - Do NOT assume a database schema — only describe models actually found in the code
 - If a section cannot be supported by the code, write "Not determinable from provided context" """,
-
-
     "changelog": """Generate a structured changelog based on the code changes visible in this repository.
 
 Structure EXACTLY like this:
@@ -754,7 +738,7 @@ Guidelines:
 - Make it immediately useful
 
 Generate the documentation now:""",
-    input_variables=["context", "target", "task", "guard"]
+    input_variables=["context", "target", "task", "guard"],
 )
 
 
@@ -812,7 +796,7 @@ Rules:
 - actions must name specific files and functions
 - Do NOT invent issues not visible in the code
 - Return ONLY valid JSON""",
-    input_variables=["repo", "file_list", "context"]
+    input_variables=["repo", "file_list", "context"],
 )
 
 
@@ -866,7 +850,7 @@ Rules:
 - If no PRs exist, return score 100, empty issues, pr_count 0, and explain in summary
 - Only report issues directly visible in the diffs
 - Return ONLY valid JSON""",
-    input_variables=["repo", "pr_list", "diffs"]
+    input_variables=["repo", "pr_list", "diffs"],
 )
 
 
@@ -915,7 +899,7 @@ Rules:
 - Code must be complete and runnable
 - Use actual function/class names from the file content
 - Return ONLY valid JSON""",
-    input_variables=["repo", "files", "context", "framework"]
+    input_variables=["repo", "files", "context", "framework"],
 )
 
 
@@ -965,7 +949,7 @@ Rules:
 - Never invent endpoints, env vars, or features
 - README must include all actual env vars found in config files
 - Return ONLY valid JSON""",
-    input_variables=["repo", "context"]
+    input_variables=["repo", "context"],
 )
 
 
@@ -994,7 +978,7 @@ Rules:
 - "done" if output has real content, specific details, and valid score
 - "retry" if output is empty, generic, or clearly hallucinated
 - Maximum retries is 2, so only retry for clearly bad output""",
-    input_variables=["agent", "repo", "output"]
+    input_variables=["agent", "repo", "output"],
 )
 
 
@@ -1022,164 +1006,7 @@ Rules:
 - summary must mention each agent that ran with specific findings
 - top_actions must be ordered by priority (most critical first)
 - Return ONLY valid JSON""",
-    input_variables=["repo", "results"]
-)
-
-TEAM_PR_REVIEW_PROMPT = PromptTemplate(
-    template="""You are a senior software engineer reviewing all open pull requests in a repository.
-
-Repository: {repo}
-
-Open PRs:
-{pr_list}
-
-PR Diffs:
-{diffs}
-
-Review all PRs and return ONLY valid JSON:
-{{
-    "score": <integer 0-100>,
-    "summary": "2-3 sentence overview of PR health",
-    "pr_count": <number of PRs reviewed>,
-    "actions": [
-        "specific actionable item (max 5)"
-    ],
-    "issues": [
-        {{
-            "pr_number": <number>,
-            "pr_title": "title",
-            "severity": "high | medium | low",
-            "description": "what needs to be fixed"
-        }}
-    ]
-}}
-
-Rules:
-- score 0 means all PRs have critical issues, 100 means all PRs are clean
-- Only report real issues visible in the diffs
-- If no PRs exist, return score 100 and empty issues""",
-    input_variables=["repo", "pr_list", "diffs"]
-)
-
-
-TEAM_TEST_PROMPT = PromptTemplate(
-    template="""You are a senior software engineer assessing test coverage for a repository.
-
-Repository: {repo}
-
-Critical files to test:
-{files}
-
-File contents:
-{context}
-
-Framework: {framework}
-
-Generate tests for the most critical file and return ONLY valid JSON:
-{{
-    "score": <integer 0-100>,
-    "summary": "2-3 sentence overview of test coverage",
-    "test_count": <number of tests generated>,
-    "coverage": <estimated coverage percentage>,
-    "actions": [
-        "specific testing improvement (max 5)"
-    ],
-    "tests": [
-        {{
-            "name": "test name",
-            "type": "unit | edge | integration",
-            "description": "what it tests",
-            "code": "actual test code"
-        }}
-    ]
-}}
-
-Rules:
-- Prioritize the most critical/complex file
-- Tests must be runnable with {framework}
-- score reflects overall test health of the repo""",
-    input_variables=["repo", "files", "context", "framework"]
-)
-
-
-TEAM_DOC_PROMPT = PromptTemplate(
-    template="""You are a senior technical writer generating essential documentation for a repository.
-
-Repository: {repo}
-
-Key files:
-{context}
-
-Generate the most important docs and return ONLY valid JSON:
-{{
-    "score": <integer 0-100>,
-    "summary": "2-3 sentence overview of documentation state",
-    "docs_generated": <number of docs>,
-    "actions": [
-        "specific documentation improvement (max 5)"
-    ],
-    "docs": [
-        {{
-            "type": "readme | api | architecture | onboarding",
-            "title": "doc title",
-            "content": "full markdown content"
-        }}
-    ]
-}}
-
-Rules:
-- score reflects current documentation quality
-- Always generate at minimum a README
-- Base everything on actual code visible in context""",
-    input_variables=["repo", "context"]
-)
-
-
-TEAM_VALIDATOR_PROMPT = PromptTemplate(
-    template="""You are a quality control agent validating an AI agent's output.
-
-Agent: {agent}
-Repository: {repo}
-
-Agent output:
-{output}
-
-Evaluate if the output is sufficient and return ONLY valid JSON:
-{{
-    "decision": "done | retry",
-    "reason": "one sentence explanation"
-}}
-
-Rules:
-- "done" if output has real content, real actions, and a valid score
-- "retry" if output is empty, hallucinated, or clearly insufficient
-- Maximum retries is 2, so be lenient on retry decisions""",
-    input_variables=["agent", "repo", "output"]
-)
-
-
-TEAM_AGGREGATOR_PROMPT = PromptTemplate(
-    template="""You are a senior engineering lead summarizing a full repository health report.
-
-Repository: {repo}
-
-Agent results:
-{results}
-
-Generate a final health report and return ONLY valid JSON:
-{{
-    "health_score": <integer 0-100, weighted average>,
-    "summary": "3-4 sentence executive summary of repo health",
-    "top_actions": [
-        "most important action across all agents (max 5)"
-    ]
-}}
-
-Rules:
-- health_score = weighted average of all agent scores
-- summary must cover all agents that ran
-- top_actions must be the highest priority items from all agents""",
-    input_variables=["repo", "results"]
+    input_variables=["repo", "results"],
 )
 
 
@@ -1197,5 +1024,5 @@ For each node ID, write a SHORT one-sentence description (max 10 words) of what 
 Return ONLY a valid JSON object like:
 {{"1": "Handles JWT authentication and token validation.", "2": "..."}}
 
-No explanation, no markdown, no extra text."""
+No explanation, no markdown, no extra text.""",
 )
