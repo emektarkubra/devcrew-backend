@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
 
+
 class RepoResponse(BaseModel):
     id: int
     github_repo_id: int

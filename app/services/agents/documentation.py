@@ -73,18 +73,16 @@ BACKEND_INDICATORS = [
     ".kt",
     ".scala",
     ".c",
-    ".cpp",  # ← ekle
+    ".cpp",
 ]
 
 IS_MAIN_ROUTER_NAMES = {
-    # Python
     "main.py",
     "app.py",
     "router.py",
     "urls.py",
     "wsgi.py",
     "asgi.py",
-    # JavaScript / TypeScript
     "index.js",
     "index.ts",
     "app.js",
@@ -93,35 +91,27 @@ IS_MAIN_ROUTER_NAMES = {
     "server.ts",
     "routes.js",
     "routes.ts",
-    # Go
     "main.go",
-    # Java / Kotlin
     "Application.java",
     "Application.kt",
     "Main.java",
     "Main.kt",
-    # C#
     "Program.cs",
     "Startup.cs",
     "App.cs",
-    # Ruby
     "application.rb",
     "routes.rb",
     "config.ru",
-    # PHP
     "index.php",
     "routes.php",
     "web.php",
     "api.php",
-    # Rust
     "main.rs",
     "router.rs",
     "routes.rs",
-    # Swift
     "main.swift",
     "App.swift",
     "Routes.swift",
-    # Scala
     "Main.scala",
     "Application.scala",
     "Router.scala",
@@ -166,13 +156,9 @@ IS_ROUTE_PATHS = [
 
 def _is_frontend_repo(file_list: list[str]) -> bool:
     frontend_ext_count = sum(
-        1 for f in file_list
-        if any(f.endswith(e) for e in FRONTEND_EXTENSIONS)
+        1 for f in file_list if any(f.endswith(e) for e in FRONTEND_EXTENSIONS)
     )
-    total_code = sum(
-        1 for f in file_list
-        if f.endswith(CODE_EXTENSIONS)
-    )
+    total_code = sum(1 for f in file_list if f.endswith(CODE_EXTENSIONS))
     if total_code == 0:
         return False
     return (frontend_ext_count / total_code) > 0.5
@@ -672,7 +658,7 @@ async def generate_documentation(
     if is_repo_level:
         file_list = await fetch_all_repo_files(access_token, owner, repo)
 
-        # ── GUIDE / ONBOARD ──────────────────────────────────────────
+        #  GUIDE / ONBOARD
         if doc_type in ("guide", "onboard"):
             active_pages = await _extract_active_pages(
                 file_list, access_token, owner, repo
@@ -727,7 +713,7 @@ async def generate_documentation(
                     "contextFiles": [],
                 }
 
-        # ── API ──────────────────────────────────────────────────────
+        #  API
         elif doc_type == "api":
             if _is_frontend_repo(file_list):
                 return {
@@ -777,7 +763,7 @@ async def generate_documentation(
 
             priority = router_files + schema_files + other_routes + large_routes
 
-        # ── ARCH ─────────────────────────────────────────────────────
+        #  ARCH ─
         elif doc_type == "arch":
             priority = [
                 f
@@ -807,7 +793,7 @@ async def generate_documentation(
                 and f.endswith(CODE_EXTENSIONS)
             ][:limit]
 
-        # ── README ───────────────────────────────────────────────────
+        #  README ─
         elif doc_type == "readme":
             env_configs = [
                 f
@@ -877,11 +863,11 @@ async def generate_documentation(
             ][:limit]
             priority = env_configs + auth_files + build_configs + code_files
 
-        # ── CHANGELOG / FUNCTION / DİĞER ─────────────────────────────
+        # changelog / function / other
         else:
             priority = [f for f in file_list if f.endswith(CODE_EXTENSIONS)][:limit]
 
-        # ── CONFIG DOSYALARI ─────────────────────────────────────────
+        #  Cconfig files
         if doc_type == "readme":
             config = [f for f in file_list if f.split("/")[-1] == "README.md"][:1]
         elif doc_type == "api":
@@ -893,7 +879,7 @@ async def generate_documentation(
                 if f.endswith((".md", ".json", ".yaml", ".yml", ".toml"))
             ][:2]
 
-        # ── CONTEXT BUILD ─────────────────────────────────────────────
+        # context builder
         important = priority + config
 
         schema_contents = []
@@ -939,12 +925,7 @@ async def generate_documentation(
         else:
             context = context[:9000]
 
-        print(f"CONTEXT SIZE: {len(context)} chars")
-        print(f"SCHEMA: {len(schema_contents)} items")
-        print(f"ROUTER: {len(router_contents)} items")
-        print(f"ROUTE: {len(route_contents)} items")
-
-        # ── AI CALL (repo-level) ──────────────────────────────────────
+        # AI call (repo-level)
         try:
             answer = chain.invoke(
                 {
@@ -958,7 +939,7 @@ async def generate_documentation(
             _handle_ai_exception(e, owner, repo, target)
 
     else:
-        # ── FILE-LEVEL DOC ────────────────────────────────────────────
+        #  file level doc
         context = await fetch_file_content(access_token, owner, repo, target)
 
         MAX_CHARS = 8000
@@ -990,7 +971,7 @@ async def generate_documentation(
 
         answer = "\n\n".join(all_answers)
 
-    # ── SAVE & RETURN ─────────────────────────────────────────────────
+    # save and return
     lines = answer.strip().splitlines()
     description = next((l for l in lines if l and not l.startswith("#")), "")
 

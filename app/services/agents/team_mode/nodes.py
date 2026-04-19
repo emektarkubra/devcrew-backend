@@ -5,8 +5,10 @@ from langchain_core.output_parsers import StrOutputParser
 from app.core.config import settings
 from app.core.constants import EXCLUDE_PATTERNS, TESTABLE_EXTENSIONS
 from app.core.prompts import (
-    TEAM_CODEBASE_PROMPT, TEAM_PR_REVIEW_PROMPT,
-    TEAM_VALIDATOR_PROMPT, TEAM_AGGREGATOR_PROMPT,
+    TEAM_CODEBASE_PROMPT,
+    TEAM_PR_REVIEW_PROMPT,
+    TEAM_VALIDATOR_PROMPT,
+    TEAM_AGGREGATOR_PROMPT,
 )
 from app.models.embedding import CodeEmbedding
 from app.services.agents.indexer import get_embedding, index_repo
@@ -21,12 +23,14 @@ llm = ChatGroq(
     api_key=settings.GROQ_API_KEY,
 )
 
+
 def clean_json(raw: str) -> dict:
     cleaned = raw.strip().replace("```json", "").replace("```", "").strip()
     return json.loads(cleaned)
 
 
 # supervisor node
+
 
 def supervisor_node(state: dict) -> dict:
     remaining = [a for a in state["selected_agents"] if a not in state["completed"]]
@@ -37,22 +41,27 @@ def supervisor_node(state: dict) -> dict:
 
 # agent nodes
 
+
 async def _codebase(state: dict, db, user_id: int) -> dict:
     try:
         repo_full = state["repo"]
 
-        count = db.query(CodeEmbedding).filter(
-            CodeEmbedding.user_id == user_id,
-            CodeEmbedding.repo    == repo_full,
-        ).count()
+        count = (
+            db.query(CodeEmbedding)
+            .filter(
+                CodeEmbedding.user_id == user_id,
+                CodeEmbedding.repo == repo_full,
+            )
+            .count()
+        )
 
         if count == 0:
             await index_repo(
-                owner        = state["owner"],
-                repo         = state["repo_name"],
-                db           = db,
-                user_id      = user_id,
-                access_token = state["access_token"],
+                owner=state["owner"],
+                repo=state["repo_name"],
+                db=db,
+                user_id=user_id,
+                access_token=state["access_token"],
             )
 
         query_vector = get_embedding("query: code quality architecture structure")
@@ -60,40 +69,61 @@ async def _codebase(state: dict, db, user_id: int) -> dict:
             db.query(CodeEmbedding)
             .filter(
                 CodeEmbedding.user_id == user_id,
-                CodeEmbedding.repo    == repo_full,
+                CodeEmbedding.repo == repo_full,
             )
             .order_by(CodeEmbedding.embedding.cosine_distance(query_vector))
             .limit(8)
             .all()
         )
 
-        context       = "\n\n".join([f"# {r.file_path}\n{r.chunk_text[:1000]}" for r in results])
+        context = "\n\n".join(
+            [f"# {r.file_path}\n{r.chunk_text[:1000]}" for r in results]
+        )
         file_list_str = "\n".join({r.file_path for r in results})
-        file_count    = len(file_list_str.splitlines())
-        chain         = TEAM_CODEBASE_PROMPT | llm | StrOutputParser()
+        file_count = len(file_list_str.splitlines())
+        chain = TEAM_CODEBASE_PROMPT | llm | StrOutputParser()
 
         try:
-            raw    = chain.invoke({"repo": repo_full, "file_list": file_list_str, "context": context})
+            raw = chain.invoke(
+                {"repo": repo_full, "file_list": file_list_str, "context": context}
+            )
             result = clean_json(raw)
         except json.JSONDecodeError:
             try:
-                raw    = chain.invoke({"repo": repo_full, "file_list": file_list_str, "context": context[:3000]})
+                raw = chain.invoke(
+                    {
+                        "repo": repo_full,
+                        "file_list": file_list_str,
+                        "context": context[:3000],
+                    }
+                )
                 result = clean_json(raw)
             except Exception:
-                result = {"score": 50, "summary": "Codebase analyzed but could not parse detailed results.", "actions": [], "issues": []}
+                result = {
+                    "score": 50,
+                    "summary": "Codebase analyzed but could not parse detailed results.",
+                    "actions": [],
+                    "issues": [],
+                }
         except Exception as e:
-            result = {"score": 0, "summary": f"Error: {str(e)}", "actions": [], "issues": []}
+            result = {
+                "score": 0,
+                "summary": f"Error: {str(e)}",
+                "actions": [],
+                "issues": [],
+            }
 
         # summary zenginleştir
         if result and not result["summary"].startswith("Error"):
             issues = result.get("issues", [])
-            high   = [i for i in issues if i.get("severity") == "high"]
+            high = [i for i in issues if i.get("severity") == "high"]
             medium = [i for i in issues if i.get("severity") == "medium"]
-            score  = result.get("score", 0)
+            score = result.get("score", 0)
 
             issue_str = (
                 f"{len(high)} critical · {len(medium)} medium issues found."
-                if issues else "No major issues detected."
+                if issues
+                else "No major issues detected."
             )
             result["summary"] = (
                 f"Analyzed {file_count} key files in `{repo_full}`. "
@@ -102,7 +132,12 @@ async def _codebase(state: dict, db, user_id: int) -> dict:
             )
 
     except Exception as e:
-        result = {"score": 0, "summary": f"Error: {str(e)}", "actions": [], "issues": []}
+        result = {
+            "score": 0,
+            "summary": f"Error: {str(e)}",
+            "actions": [],
+            "issues": [],
+        }
 
     return {**state, "results": {**state.get("results", {}), "codebase": result}}
 
@@ -117,16 +152,19 @@ async def _pr_review(state: dict) -> dict:
             )
         prs = resp.json() if resp.status_code == 200 else []
 
-        pr_list = "\n".join([f"PR #{p['number']}: {p['title']}" for p in prs]) or "No open PRs"
+        pr_list = (
+            "\n".join([f"PR #{p['number']}: {p['title']}" for p in prs])
+            or "No open PRs"
+        )
 
         diffs = []
         for pr in prs[:3]:
             try:
                 diff = await fetch_pr_diff(
-                    access_token = state["access_token"],
-                    owner        = state["owner"],
-                    repo         = state["repo_name"],
-                    pr_number    = pr["number"],
+                    access_token=state["access_token"],
+                    owner=state["owner"],
+                    repo=state["repo_name"],
+                    pr_number=pr["number"],
                 )
                 diffs.append(f"## PR #{pr['number']}: {pr['title']}\n{diff[:2000]}")
             except Exception:
@@ -134,19 +172,21 @@ async def _pr_review(state: dict) -> dict:
 
         chain = TEAM_PR_REVIEW_PROMPT | llm | StrOutputParser()
         try:
-            raw    = chain.invoke({
-                "repo":    state["repo"],
-                "pr_list": pr_list,
-                "diffs":   "\n\n".join(diffs) or "No diffs available",
-            })
+            raw = chain.invoke(
+                {
+                    "repo": state["repo"],
+                    "pr_list": pr_list,
+                    "diffs": "\n\n".join(diffs) or "No diffs available",
+                }
+            )
             result = clean_json(raw)
 
             # summary zenginleştir
             if result and not result["summary"].startswith("Error"):
                 pr_count = result.get("pr_count", len(prs))
-                issues   = result.get("issues", [])
-                high     = [i for i in issues if i.get("severity") == "high"]
-                score    = result.get("score", 0)
+                issues = result.get("issues", [])
+                high = [i for i in issues if i.get("severity") == "high"]
+                score = result.get("score", 0)
 
                 if pr_count == 0:
                     result["summary"] = (
@@ -157,21 +197,31 @@ async def _pr_review(state: dict) -> dict:
                     result["summary"] = (
                         f"{pr_count} open PR(s) reviewed in `{state['repo']}`. "
                         f"Risk score: {score}/100. "
-                        + (f"{len(high)} critical issue(s) found. " if high else "No critical issues. ")
+                        + (
+                            f"{len(high)} critical issue(s) found. "
+                            if high
+                            else "No critical issues. "
+                        )
                         + result.get("summary", "")
                     )
 
         except json.JSONDecodeError:
             result = {
-                "score":    80,
-                "summary":  f"{len(prs)} PR(s) reviewed but could not parse detailed results.",
-                "actions":  [],
-                "issues":   [],
+                "score": 80,
+                "summary": f"{len(prs)} PR(s) reviewed but could not parse detailed results.",
+                "actions": [],
+                "issues": [],
                 "pr_count": len(prs),
             }
 
     except Exception as e:
-        result = {"score": 0, "summary": f"Error: {str(e)}", "actions": [], "issues": [], "pr_count": 0}
+        result = {
+            "score": 0,
+            "summary": f"Error: {str(e)}",
+            "actions": [],
+            "issues": [],
+            "pr_count": 0,
+        }
 
     return {**state, "results": {**state.get("results", {}), "pr_review": result}}
 
@@ -179,91 +229,107 @@ async def _pr_review(state: dict) -> dict:
 async def _test(state: dict, db, user_id: int) -> dict:
     try:
         file_list = await fetch_all_repo_files(
-            access_token = state["access_token"],
-            owner        = state["owner"],
-            repo         = state["repo_name"],
+            access_token=state["access_token"],
+            owner=state["owner"],
+            repo=state["repo_name"],
         )
 
         # filter testable files
         testable = [
-            f for f in file_list
+            f
+            for f in file_list
             if any(f.endswith(e) for e in TESTABLE_EXTENSIONS)
             and not any(x in f for x in EXCLUDE_PATTERNS)
         ]
 
         # priority files
         priority_patterns = [
-            "routes/", "routers/", "services/", "service/",
-            "controllers/", "handlers/", "pages/", "components/",
+            "routes/",
+            "routers/",
+            "services/",
+            "service/",
+            "controllers/",
+            "handlers/",
+            "pages/",
+            "components/",
         ]
 
-        priority = [
-            f for f in testable
-            if any(p in f for p in priority_patterns)
-        ][:2]
+        priority = [f for f in testable if any(p in f for p in priority_patterns)][:2]
 
         # complete to 2 files if priority is less than 2
         if len(priority) < 2:
-            rest     = [f for f in testable if f not in priority]
-            priority += rest[:2 - len(priority)]
+            rest = [f for f in testable if f not in priority]
+            priority += rest[: 2 - len(priority)]
 
         selected = priority or testable[:2]
 
         if not selected:
-            return {**state, "results": {**state.get("results", {}), "test": {
-                "score":      0,
-                "summary":    "No testable files found in the repository after filtering config and spec files.",
-                "actions":    ["Add source files with testable logic"],
-                "tests":      [],
-                "test_count": 0,
-                "coverage":   0,
-            }}}
+            return {
+                **state,
+                "results": {
+                    **state.get("results", {}),
+                    "test": {
+                        "score": 0,
+                        "summary": "No testable files found in the repository after filtering config and spec files.",
+                        "actions": ["Add source files with testable logic"],
+                        "tests": [],
+                        "test_count": 0,
+                        "coverage": 0,
+                    },
+                },
+            }
 
         framework = "pytest" if any(f.endswith(".py") for f in selected) else "jest"
 
-        all_tests         = []
-        total_coverage    = 0
-        total_unit        = 0
-        total_edge        = 0
+        all_tests = []
+        total_coverage = 0
+        total_unit = 0
+        total_edge = 0
         total_integration = 0
-        tested_files      = []
+        tested_files = []
 
         for file in selected:
             try:
                 tr = await generate_tests(
-                    target       = file,
-                    owner        = state["owner"],
-                    repo         = state["repo_name"],
-                    user_id      = user_id,
-                    framework    = framework,
-                    access_token = state["access_token"],
-                    db           = db,
+                    target=file,
+                    owner=state["owner"],
+                    repo=state["repo_name"],
+                    user_id=user_id,
+                    framework=framework,
+                    access_token=state["access_token"],
+                    db=db,
                 )
-                all_tests         += tr.get("tests", [])
-                total_coverage    += tr.get("coverage", 0)
-                total_unit        += tr.get("unitCount", 0)
-                total_edge        += tr.get("edgeCount", 0)
+                all_tests += tr.get("tests", [])
+                total_coverage += tr.get("coverage", 0)
+                total_unit += tr.get("unitCount", 0)
+                total_edge += tr.get("edgeCount", 0)
                 total_integration += tr.get("integrationCount", 0)
                 tested_files.append(file)
             except Exception:
                 continue
 
         if not tested_files:
-            return {**state, "results": {**state.get("results", {}), "test": {
-                "score":      0,
-                "summary":    "Test generation failed for all selected files.",
-                "actions":    [],
-                "tests":      [],
-                "test_count": 0,
-                "coverage":   0,
-            }}}
+            return {
+                **state,
+                "results": {
+                    **state.get("results", {}),
+                    "test": {
+                        "score": 0,
+                        "summary": "Test generation failed for all selected files.",
+                        "actions": [],
+                        "tests": [],
+                        "test_count": 0,
+                        "coverage": 0,
+                    },
+                },
+            }
 
         avg_coverage = total_coverage // len(tested_files)
-        files_str    = "`, `".join(tested_files)
+        files_str = "`, `".join(tested_files)
 
         result = {
-            "score":      min(avg_coverage, 100),
-            "summary":    (
+            "score": min(avg_coverage, 100),
+            "summary": (
                 f"{len(all_tests)} tests generated for {len(tested_files)} file(s) "
                 f"(`{files_str}`). "
                 f"Framework: {framework}. "
@@ -271,22 +337,24 @@ async def _test(state: dict, db, user_id: int) -> dict:
                 f"Avg estimated coverage: {avg_coverage}%."
             ),
             "test_count": len(all_tests),
-            "coverage":   avg_coverage,
-            "actions":    [
+            "coverage": avg_coverage,
+            "actions": [
                 f"Run: {'pytest' if framework == 'pytest' else 'npx jest'}",
-                *[f"Generate tests for {f}" for f in testable if f not in tested_files][:3],
+                *[f"Generate tests for {f}" for f in testable if f not in tested_files][
+                    :3
+                ],
             ],
             "tests": all_tests,
         }
 
     except Exception as e:
         result = {
-            "score":      0,
-            "summary":    f"Error: {str(e)}",
-            "actions":    [],
-            "tests":      [],
+            "score": 0,
+            "summary": f"Error: {str(e)}",
+            "actions": [],
+            "tests": [],
             "test_count": 0,
-            "coverage":   0,
+            "coverage": 0,
         }
 
     return {**state, "results": {**state.get("results", {}), "test": result}}
@@ -295,13 +363,13 @@ async def _test(state: dict, db, user_id: int) -> dict:
 async def _doc(state: dict, db, user_id: int) -> dict:
     try:
         doc_result = await generate_documentation(
-            target       = state["repo"],
-            owner        = state["owner"],
-            repo         = state["repo_name"],
-            user_id      = user_id,
-            doc_type     = "readme",
-            access_token = state["access_token"],
-            db           = db,
+            target=state["repo"],
+            owner=state["owner"],
+            repo=state["repo_name"],
+            user_id=user_id,
+            doc_type="readme",
+            access_token=state["access_token"],
+            db=db,
         )
 
         markdown = doc_result.get("markdown", "")
@@ -315,14 +383,14 @@ async def _doc(state: dict, db, user_id: int) -> dict:
         feature_str = " · ".join(features) if features else "project overview"
 
         result = {
-            "score":          80,
-            "summary":        (
+            "score": 80,
+            "summary": (
                 f"README generated for `{state['repo']}`. "
                 f"Covers: {feature_str}. "
                 f"Includes tech stack, environment variables, installation steps, and project structure."
             ),
             "docs_generated": 1,
-            "actions":        [
+            "actions": [
                 "Review and publish generated README.md to repository root",
                 "Add API endpoint documentation",
                 "Add contributing guide and code of conduct",
@@ -332,10 +400,10 @@ async def _doc(state: dict, db, user_id: int) -> dict:
 
     except Exception as e:
         result = {
-            "score":          0,
-            "summary":        f"Error: {str(e)}",
-            "actions":        [],
-            "docs":           [],
+            "score": 0,
+            "summary": f"Error: {str(e)}",
+            "actions": [],
+            "docs": [],
             "docs_generated": 0,
         }
 
@@ -343,6 +411,7 @@ async def _doc(state: dict, db, user_id: int) -> dict:
 
 
 # node factory
+
 
 def make_nodes(db, user_id: int):
 
@@ -363,13 +432,16 @@ def make_nodes(db, user_id: int):
 
 # validator node
 
+
 def validator_node(state: dict) -> dict:
-    agent  = state["current_agent"]
+    agent = state["current_agent"]
     result = state.get("results", {}).get(agent, {})
 
     try:
-        chain    = TEAM_VALIDATOR_PROMPT | llm | StrOutputParser()
-        raw      = chain.invoke({"agent": agent, "repo": state["repo"], "output": json.dumps(result)})
+        chain = TEAM_VALIDATOR_PROMPT | llm | StrOutputParser()
+        raw = chain.invoke(
+            {"agent": agent, "repo": state["repo"], "output": json.dumps(result)}
+        )
         decision = clean_json(raw).get("decision", "done")
     except Exception:
         decision = "done"
@@ -385,25 +457,44 @@ def validator_node(state: dict) -> dict:
 
 
 # aggregator node
-
 def aggregator_node(state: dict) -> dict:
+    results = state.get("results", {})
+
+    valid_results = {
+        k: v
+        for k, v in results.items()
+        if isinstance(v.get("score"), (int, float)) and v.get("score", 0) > 0
+    }
+
+    if not valid_results:
+        return {
+            **state,
+            "health_score": 0,
+            "health_summary": "All agents failed due to rate limiting. Please try again later.",
+            "top_actions": [],
+        }
+
     try:
-        chain  = TEAM_AGGREGATOR_PROMPT | llm | StrOutputParser()
-        raw    = chain.invoke({
-            "repo":    state["repo"],
-            "results": json.dumps(state.get("results", {}), indent=2),
-        })
+        chain = TEAM_AGGREGATOR_PROMPT | llm | StrOutputParser()
+        raw = chain.invoke(
+            {
+                "repo": state["repo"],
+                "results": json.dumps(valid_results, indent=2),
+            }
+        )
         parsed = clean_json(raw)
         return {
             **state,
-            "health_score":   parsed.get("health_score", 0),
+            "health_score": parsed.get("health_score", 0),
             "health_summary": parsed.get("summary", ""),
-            "top_actions":    parsed.get("top_actions", []),
+            "top_actions": parsed.get("top_actions", []),
         }
     except Exception as e:
+        scores = [v["score"] for v in valid_results.values()]
+        health_score = round(sum(scores) / len(scores)) if scores else 0
         return {
             **state,
-            "health_score":   0,
+            "health_score": health_score,
             "health_summary": f"Error: {str(e)}",
-            "top_actions":    [],
+            "top_actions": [],
         }

@@ -930,11 +930,18 @@ async def repo_intelligence(
         raise UserNotFoundError(user_id=user_id)
 
     try:
+        from datetime import datetime, timedelta
+
+        days = 7 if period == "7d" else 90 if period == "90d" else 30
+        until = datetime.utcnow()
+        since = until - timedelta(days=days)
+
         result = await get_repo_intelligence(
             owner=owner,
             repo=repo,
             access_token=user.access_token,
-            period=period,
+            since=since.strftime("%Y-%m-%d"),
+            until=until.strftime("%Y-%m-%d"),
         )
         return result
     except AppError:

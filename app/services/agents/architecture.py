@@ -112,23 +112,15 @@ def extract_ts_imports(source: str, file_path: str, all_paths: list[str]) -> lis
     pattern = r"""(?:import|from)\s+['"]([^'"]+)['"]"""
     raw_imports = re.findall(pattern, source)
 
-    # path_stems: dict[str, str] = {}
-    # for path in all_paths:
-    #     stem = path
-    #     for ext in (".ts", ".tsx", ".js", ".jsx"):
-    #         stem = stem.replace(ext, "")
-    #     path_stems[path] = stem
-    
     path_stems: dict[str, str] = {}
     for path in all_paths:
         stem = path
-        for ext in (".tsx", ".ts", ".jsx", ".js"):  # önce uzun olanlar!
+        for ext in (".tsx", ".ts", ".jsx", ".js"): 
             if stem.endswith(ext):
-                stem = stem[:-len(ext)]
+                stem = stem[: -len(ext)]
                 break
         path_stems[path] = stem
 
-    # Bilinen proje klasörleri — alias veya absolute import için
     KNOWN_DIRS = (
         "src/",
         "app/",

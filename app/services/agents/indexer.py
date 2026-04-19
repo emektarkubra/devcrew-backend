@@ -4,7 +4,7 @@ from app.models.embedding import CodeEmbedding
 from sqlalchemy.orm import Session
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
-from app.core.exceptions import RepoIndexError, EmbeddingError, AppError
+from app.core.exceptions import RepoIndexError, AppError
 from app.core.constants import SUPPORTED_EXTENSIONS
 from app.core.config import settings
 

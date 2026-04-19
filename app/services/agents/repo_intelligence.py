@@ -121,6 +121,7 @@ async def get_repo_intelligence(
     access_token: str,
     since: str,
     until: str,
+    period: str = "30d",
 ) -> dict:
 
     since_dt = datetime.strptime(since, "%Y-%m-%d")
