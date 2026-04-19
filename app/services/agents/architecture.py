@@ -112,49 +112,128 @@ def extract_ts_imports(source: str, file_path: str, all_paths: list[str]) -> lis
     pattern = r"""(?:import|from)\s+['"]([^'"]+)['"]"""
     raw_imports = re.findall(pattern, source)
 
+    # path_stems: dict[str, str] = {}
+    # for path in all_paths:
+    #     stem = path
+    #     for ext in (".ts", ".tsx", ".js", ".jsx"):
+    #         stem = stem.replace(ext, "")
+    #     path_stems[path] = stem
+    
     path_stems: dict[str, str] = {}
     for path in all_paths:
         stem = path
-        for ext in (".ts", ".tsx", ".js", ".jsx"):
-            stem = stem.replace(ext, "")
+        for ext in (".tsx", ".ts", ".jsx", ".js"):  # önce uzun olanlar!
+            if stem.endswith(ext):
+                stem = stem[:-len(ext)]
+                break
         path_stems[path] = stem
+
+    # Bilinen proje klasörleri — alias veya absolute import için
+    KNOWN_DIRS = (
+        "src/",
+        "app/",
+        "pages/",
+        "components/",
+        "services/",
+        "utils/",
+        "context/",
+        "layout/",
+        "routes/",
+        "hooks/",
+        "store/",
+        "redux/",
+        "types/",
+        "lib/",
+        "helpers/",
+    )
 
     matched = []
     for imp in raw_imports:
-        if not imp.startswith("."):
-            continue
-
-        resolved = resolve_ts_path(imp, file_path)
-
-        for path, stem in path_stems.items():
-            if path == file_path:
-                continue
-
-            if stem == resolved:
-                matched.append(path)
-                break
-
-            if stem == resolved + "/index" or stem == resolved.rstrip("/index"):
-                matched.append(path)
-                break
-
-            resolved_name = resolved.split("/")[-1]
-            stem_name = stem.split("/")[-1]
-            if (
-                resolved_name
-                and resolved_name == stem_name
-                and resolved_name != "index"
-            ):
-                resolved_parts = resolved.split("/")
-                stem_parts = stem.split("/")
-                common = sum(
-                    1
-                    for a, b in zip(reversed(resolved_parts), reversed(stem_parts))
-                    if a == b
-                )
-                if common >= min(2, len(resolved_parts)):
+        # Relative import — doğrudan işle
+        if imp.startswith("."):
+            resolved = resolve_ts_path(imp, file_path)
+            for path, stem in path_stems.items():
+                if path == file_path:
+                    continue
+                if stem == resolved or stem == resolved + "/index":
                     matched.append(path)
                     break
+                resolved_name = resolved.split("/")[-1]
+                stem_name = stem.split("/")[-1]
+                if (
+                    resolved_name
+                    and resolved_name == stem_name
+                    and resolved_name != "index"
+                ):
+                    resolved_parts = resolved.split("/")
+                    stem_parts = stem.split("/")
+                    common = sum(
+                        1
+                        for a, b in zip(reversed(resolved_parts), reversed(stem_parts))
+                        if a == b
+                    )
+                    if common >= min(2, len(resolved_parts)):
+                        matched.append(path)
+                        break
+            continue
+
+        # @/ alias — src/ olarak çözümle
+        if imp.startswith("@/"):
+            resolved = "src/" + imp[2:]
+            for path, stem in path_stems.items():
+                if path == file_path:
+                    continue
+                if stem == resolved or stem == resolved + "/index":
+                    matched.append(path)
+                    break
+                resolved_name = resolved.split("/")[-1]
+                stem_name = stem.split("/")[-1]
+                if (
+                    resolved_name
+                    and resolved_name == stem_name
+                    and resolved_name != "index"
+                ):
+                    resolved_parts = resolved.split("/")
+                    stem_parts = stem.split("/")
+                    common = sum(
+                        1
+                        for a, b in zip(reversed(resolved_parts), reversed(stem_parts))
+                        if a == b
+                    )
+                    if common >= min(2, len(resolved_parts)):
+                        matched.append(path)
+                        break
+            continue
+
+        # Absolute proje import (npm package değil) — bilinen klasörlerle kontrol
+        if any(imp.startswith(d) or f"/{d.rstrip('/')}" in imp for d in KNOWN_DIRS):
+            resolved = imp
+            for path, stem in path_stems.items():
+                if path == file_path:
+                    continue
+                if stem == resolved or stem == resolved + "/index":
+                    matched.append(path)
+                    break
+                resolved_name = resolved.split("/")[-1]
+                stem_name = stem.split("/")[-1]
+                if (
+                    resolved_name
+                    and resolved_name == stem_name
+                    and resolved_name != "index"
+                ):
+                    resolved_parts = resolved.split("/")
+                    stem_parts = stem.split("/")
+                    common = sum(
+                        1
+                        for a, b in zip(reversed(resolved_parts), reversed(stem_parts))
+                        if a == b
+                    )
+                    if common >= min(2, len(resolved_parts)):
+                        matched.append(path)
+                        break
+            continue
+
+        # Diğer her şey npm package — atla
 
     return list(set(matched))
 
@@ -171,7 +250,6 @@ def determine_node_type(path: str, content: str) -> str:
     if any(x in p for x in ["router.py", "middleware", "cors", "jwt", "guard"]):
         return "middleware"
 
-    # Context/Provider → middleware
     if any(x in p for x in ["context", "provider", "store", "redux", "slice"]):
         return "middleware"
 
@@ -197,9 +275,8 @@ def determine_node_type(path: str, content: str) -> str:
     ):
         return "external"
 
-    # TS/TSX
     if p.endswith(".tsx") or p.endswith(".jsx"):
-        if any(x in p for x in ["layout", "withLayout", "hoc"]):
+        if any(x in p for x in ["layout", "withlayout", "hoc"]):
             return "middleware"
         return "service"
 
@@ -272,28 +349,27 @@ async def analyze_architecture(
 ) -> dict:
     repo_full = f"{owner}/{repo}"
 
-    # fetch file list
     tree = await fetch_file_list(owner, repo, access_token)
     all_paths = [item["path"] for item in tree if item["type"] == "blob"]
-
-    # select files with prioritize
     analyzable = prioritize_files(all_paths, limit=40)
 
     if not analyzable:
         return {"nodes": [], "edges": [], "repo": repo_full}
 
-    # create node for every file
     nodes: list[dict] = []
     edges: list[dict] = []
-    path_to_id: dict = {}
     edge_set: set = set()
+    path_to_id: dict = {}
 
+    # ── 1. Pass: önce tüm node'ları ve path_to_id'yi oluştur ──
+    file_contents: dict[str, str] = {}
     for idx, path in enumerate(analyzable):
         node_id = str(idx + 1)
         path_to_id[path] = node_id
 
         content = await fetch_file_content(owner, repo, path, access_token)
-        ext = "." + path.split(".")[-1]
+        file_contents[path] = content
+
         lang = determine_language(path)
         typ = determine_node_type(path, content)
         label = path.split("/")[-1]
@@ -312,7 +388,13 @@ async def analyze_architecture(
             }
         )
 
-        # analyze import
+    # ── 2. Pass: tüm path_to_id hazır, şimdi import'ları analiz et ──
+    for idx, path in enumerate(analyzable):
+        node_id = str(idx + 1)
+        content = file_contents[path]
+        typ = nodes[idx]["data"]["type"]
+        ext = "." + path.split(".")[-1]
+
         if ext == ".py":
             imports = extract_python_imports(content, path, analyzable)
         else:
@@ -335,7 +417,6 @@ async def analyze_architecture(
                         }
                     )
 
-    # add description
     nodes = await enrich_with_llm(nodes, repo_full)
 
     return {
