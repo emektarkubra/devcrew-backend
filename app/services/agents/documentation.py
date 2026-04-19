@@ -165,11 +165,17 @@ IS_ROUTE_PATHS = [
 
 
 def _is_frontend_repo(file_list: list[str]) -> bool:
-    has_frontend = any(
-        any(f.endswith(e) for e in FRONTEND_EXTENSIONS) for f in file_list
+    frontend_ext_count = sum(
+        1 for f in file_list
+        if any(f.endswith(e) for e in FRONTEND_EXTENSIONS)
     )
-    has_backend = any(any(ind in f for ind in BACKEND_INDICATORS) for f in file_list)
-    return has_frontend and not has_backend
+    total_code = sum(
+        1 for f in file_list
+        if f.endswith(CODE_EXTENSIONS)
+    )
+    if total_code == 0:
+        return False
+    return (frontend_ext_count / total_code) > 0.5
 
 
 def _is_main_router(f: str) -> bool:
