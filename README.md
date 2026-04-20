@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="./banner.png" alt="DevCrew Banner" width="100%" />
-</p>
-
 <h1 align="center">DevCrew — AI Dev Team Backend</h1>
 
 <p align="center">
@@ -46,7 +42,7 @@ cd <REPO_NAME>
 
 # 2. Environment
 cp .env.example .env
-# Edit .env with your credentials
+# Edit .env with your credentials (see Environment Variables below)
 
 # 3. Start
 docker-compose up --build
@@ -58,16 +54,18 @@ docker-compose up --build
 
 ## 🔐 Environment Variables
 
+Copy `.env.example` to `.env` and fill in the values:
+
 ```env
-# PostgreSQL
+# Database
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=your_password
 POSTGRES_DB=devcrew
 DATABASE_URL=postgresql://postgres:your_password@db:5432/devcrew
 
-# FastAPI
+# Backend
 FASTAPI_PORT=8000
-SECRET_KEY=your_secret_key_here
+SECRET_KEY=your_secret_key_here        # see below for how to generate
 
 # GitHub OAuth
 GITHUB_CLIENT_ID=your_github_client_id
@@ -82,17 +80,28 @@ GROQ_API_KEY=your_groq_api_key
 FRONTEND_URL=http://localhost:5173
 ```
 
-### GitHub OAuth App
+**Generate a SECRET_KEY:**
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
 
-1. [github.com/settings/developers](https://github.com/settings/developers) → **New OAuth App**
-2. **Homepage URL:** `http://localhost:5173`
-3. **Callback URL:** `http://localhost:8000/auth/github/callback`
-4. Copy `Client ID` and `Client Secret` to `.env`
+---
 
-### Groq API Key
+## 🔑 GitHub OAuth Setup
 
-1. Sign up at [console.groq.com](https://console.groq.com) — free tier available
-2. **API Keys** → **Create API Key** → copy to `.env`
+1. Go to [github.com/settings/developers](https://github.com/settings/developers) → **New OAuth App**
+2. Fill in:
+   - **Homepage URL:** `http://localhost:5173`
+   - **Authorization callback URL:** `http://localhost:8000/auth/github/callback`
+3. Copy **Client ID** and **Client Secret** into `.env`
+
+---
+
+## 🤖 Groq API Key
+
+1. Sign up at [console.groq.com](https://console.groq.com) — free tier available (100K tokens/day)
+2. Go to **API Keys** → **Create API Key**
+3. Copy the key into `.env` as `GROQ_API_KEY`
 
 ---
 
@@ -103,8 +112,10 @@ FRONTEND_URL=http://localhost:5173
 | API | http://localhost:8000 |
 | Swagger UI | http://localhost:8000/docs |
 | ReDoc | http://localhost:8000/redoc |
-| PostgreSQL (DBeaver) | `localhost:5433` |
+| PostgreSQL (external) | `localhost:5433` |
 | Frontend | http://localhost:5173 |
+
+> PostgreSQL is mapped to port `5433` externally to avoid conflicts with any locally installed PostgreSQL. Use this port in DBeaver or any DB client.
 
 ---
 
@@ -135,6 +146,21 @@ docker-compose down -v && docker-compose up --build
 
 ---
 
+## 🛠 Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Web Framework | FastAPI |
+| ORM | SQLAlchemy |
+| Database | PostgreSQL 15 + pgvector |
+| LLM | Groq — llama-3.3-70b-versatile |
+| Embeddings | HuggingFace (local) |
+| Multi-Agent | LangGraph |
+| Auth | GitHub OAuth 2.0 + JWT |
+| Containerization | Docker Compose |
+
+---
+
 ## 🆘 Troubleshooting
 
 **Port already in use**
@@ -149,30 +175,15 @@ docker-compose down -v && docker-compose up --build
 ```
 
 **GitHub OAuth callback error**
-- Verify callback URL in GitHub OAuth App: `http://localhost:8000/auth/github/callback`
+- Verify callback URL in GitHub OAuth App settings: `http://localhost:8000/auth/github/callback`
 - Check `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in `.env`
 
 **Groq rate limit (429)**
-- Free tier: 100k tokens/day
-- Wait for daily reset or upgrade at [console.groq.com](https://console.groq.com)
+- Free tier: 100K tokens/day — resets daily
+- Wait for reset or upgrade at [console.groq.com](https://console.groq.com/settings/billing)
 
 **Embedding model download stuck**
 - Wait for `Application startup complete` in logs — first download is ~280MB
-
----
-
-## 🛠 Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Web Framework | FastAPI |
-| ORM | SQLAlchemy |
-| Database | PostgreSQL 15 + pgvector |
-| LLM | Groq — llama-3.3-70b-versatile |
-| Embeddings | HuggingFace (local) |
-| Multi-Agent | LangGraph |
-| Auth | GitHub OAuth 2.0 + JWT |
-| Containerization | Docker Compose |
 
 ---
 
