@@ -1,6 +1,6 @@
 <h1 align="center">DevCrew — AI Dev Team Backend</h1>
 
-<p align="center">
+<p align="center"> 
   <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.11+-blue.svg" alt="Python"/></a>
   <a href="https://fastapi.tiangolo.com"><img src="https://img.shields.io/badge/FastAPI-0.104+-green.svg" alt="FastAPI"/></a>
   <a href="https://langchain-ai.github.io/langgraph"><img src="https://img.shields.io/badge/LangGraph-0.1+-purple.svg" alt="LangGraph"/></a>
