@@ -77,7 +77,7 @@ GITHUB_API_URL=https://api.github.com
 GROQ_API_KEY=your_groq_api_key
 
 # Frontend
-FRONTEND_URL=http://localhost:5173
+FRONTEND_URL=https://devcrew-web.vercel.app
 ```
 
 **Generate a SECRET_KEY:**
