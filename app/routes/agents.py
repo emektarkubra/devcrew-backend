@@ -58,12 +58,11 @@ from app.services.repo_service import fetch_all_repo_files
 from app.services.agents.test_generator import generate_tests
 from app.models.test_history import TestHistory
 from app.models.embedding import CodeEmbedding
-from app.services.agents.team_mode import run_team_mode
-from app.schemas.agents import TeamModeRequest, TeamModeResponse
 from fastapi.responses import StreamingResponse
 from app.models.team_mode_history import TeamModeHistory
 from app.services.agents.architecture import analyze_architecture
 from app.services.agents.repo_intelligence import get_repo_intelligence
+from fastapi import BackgroundTasks
 import asyncio
 import json
 
@@ -72,39 +71,32 @@ router = APIRouter(prefix="/agents")
 
 # index
 @router.post("/index", response_model=IndexResponse)
-async def index_repository(payload: IndexRequest, db: Session = Depends(get_db)):
+async def index_repository(
+    payload: IndexRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     user_id = get_current_user_id(payload.token)
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
         raise UserNotFoundError(user_id=user_id)
 
-    try:
-        return await index_repo(
-            access_token=user.access_token,
-            owner=payload.owner,
-            repo=payload.repo,
-            user_id=user.id,
-            db=db,
-        )
-    except AppError:
-        raise
-    except Exception as e:
-        err_str = str(e).lower()
-        if (
-            "rate_limit_exceeded" in err_str
-            or "429" in err_str
-            or "rate limit" in err_str
-        ):
-            raise AIRateLimitError(
-                owner=payload.owner, repo=payload.repo, error_str=err_str
-            ) from e
-        raise AppError(
-            code="INDEX_ERROR",
-            message=f"An error occurred while indexing the repository: {e}",
-            status_code=500,
-            details={"owner": payload.owner, "repo": payload.repo},
-        ) from e
+    background_tasks.add_task(
+        index_repo,
+        access_token=user.access_token,
+        owner=payload.owner,
+        repo=payload.repo,
+        user_id=user.id,
+        db=db,
+    )
+
+    return {
+        "status": "indexing",
+        "repo": f"{payload.owner}/{payload.repo}",
+        "files_indexed": 0,
+        "total_chunks": 0,
+    }
 
 
 # check-index
