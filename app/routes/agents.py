@@ -82,14 +82,18 @@ async def index_repository(
     if not user:
         raise UserNotFoundError(user_id=user_id)
 
+    # Session kapanmadan önce değerleri kopyala
+    access_token = user.access_token
+    uid = user.id
+
     async def run_indexing():
         db_local = SessionLocal()
         try:
             await index_repo(
-                access_token=user.access_token,
+                access_token=access_token,
                 owner=payload.owner,
                 repo=payload.repo,
-                user_id=user.id,
+                user_id=uid,
                 db=db_local,
             )
         finally:
