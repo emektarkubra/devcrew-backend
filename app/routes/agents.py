@@ -69,7 +69,6 @@ import json
 
 router = APIRouter(prefix="/agents")
 
-
 # index
 @router.post("/index", response_model=IndexResponse)
 async def index_repository(
