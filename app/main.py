@@ -22,7 +22,6 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-register_exception_handlers(app)
 
 # app.add_middleware(
 #     CORSMiddleware,
@@ -44,5 +43,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+register_exception_handlers(app)
 
 app.include_router(router)
