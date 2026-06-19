@@ -71,42 +71,39 @@ router = APIRouter(prefix="/agents")
 
 # index
 @router.post("/index", response_model=IndexResponse)
-async def index_repository(
-    payload: IndexRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
-):
+async def index_repository(payload: IndexRequest, db: Session = Depends(get_db)):
     user_id = get_current_user_id(payload.token)
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
         raise UserNotFoundError(user_id=user_id)
 
-    # Session kapanmadan önce değerleri kopyala
-    access_token = user.access_token
-    uid = user.id
-
-    async def run_indexing():
-        db_local = SessionLocal()
-        try:
-            await index_repo(
-                access_token=access_token,
-                owner=payload.owner,
-                repo=payload.repo,
-                user_id=uid,
-                db=db_local,
-            )
-        finally:
-            db_local.close()
-
-    background_tasks.add_task(run_indexing)
-
-    return {
-        "status": "indexing",
-        "repo": f"{payload.owner}/{payload.repo}",
-        "files_indexed": 0,
-        "total_chunks": 0,
-    }
+    try:
+        return await index_repo(
+            access_token=user.access_token,
+            owner=payload.owner,
+            repo=payload.repo,
+            user_id=user.id,
+            db=db,
+        )
+    except AppError:
+        raise
+    except Exception as e:
+        err_str = str(e).lower()
+        if (
+            "rate_limit_exceeded" in err_str
+            or "429" in err_str
+            or "rate limit" in err_str
+        ):
+            raise AIRateLimitError(
+                owner=payload.owner, repo=payload.repo, error_str=err_str
+            ) from e
+        raise AppError(
+            code="INDEX_ERROR",
+            message=f"An error occurred while indexing the repository: {e}",
+            status_code=500,
+            details={"owner": payload.owner, "repo": payload.repo},
+        ) from e
 
 
 # check-index
