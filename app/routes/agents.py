@@ -63,6 +63,7 @@ from app.models.team_mode_history import TeamModeHistory
 from app.services.agents.architecture import analyze_architecture
 from app.services.agents.repo_intelligence import get_repo_intelligence
 from fastapi import BackgroundTasks
+from app.core.database import SessionLocal
 import asyncio
 import json
 
@@ -82,14 +83,20 @@ async def index_repository(
     if not user:
         raise UserNotFoundError(user_id=user_id)
 
-    background_tasks.add_task(
-        index_repo,
-        access_token=user.access_token,
-        owner=payload.owner,
-        repo=payload.repo,
-        user_id=user.id,
-        db=db,
-    )
+    async def run_indexing():
+        db_local = SessionLocal()
+        try:
+            await index_repo(
+                access_token=user.access_token,
+                owner=payload.owner,
+                repo=payload.repo,
+                user_id=user.id,
+                db=db_local,
+            )
+        finally:
+            db_local.close()
+
+    background_tasks.add_task(run_indexing)
 
     return {
         "status": "indexing",
